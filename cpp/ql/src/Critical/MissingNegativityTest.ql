@@ -5,6 +5,7 @@
  * @kind problem
  * @id cpp/missing-negativity-test
  * @problem.severity warning
+ * @security-severity 5.8
  * @tags reliability
  *       security
  *       external/cwe/cwe-823

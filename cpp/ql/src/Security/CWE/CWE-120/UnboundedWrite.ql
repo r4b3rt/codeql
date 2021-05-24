@@ -4,6 +4,7 @@
  *              of data written may overflow.
  * @kind path-problem
  * @problem.severity error
+ * @security-severity 5.5
  * @precision medium
  * @id cpp/unbounded-write
  * @tags reliability

@@ -5,6 +5,7 @@
  *              their session.
  * @kind problem
  * @problem.severity error
+ * @security-severity 5.2
  * @precision high
  * @id cs/session-reuse
  * @tags security

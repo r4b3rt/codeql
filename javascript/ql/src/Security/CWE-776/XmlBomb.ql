@@ -4,6 +4,7 @@
  *              entity expansion is vulnerable to denial-of-service attacks.
  * @kind path-problem
  * @problem.severity warning
+ * @security-severity 5.9
  * @precision high
  * @id js/xml-bomb
  * @tags security

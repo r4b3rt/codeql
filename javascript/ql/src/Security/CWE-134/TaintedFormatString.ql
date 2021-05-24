@@ -3,6 +3,7 @@
  * @description Using external input in format strings can lead to garbled output.
  * @kind path-problem
  * @problem.severity warning
+ * @security-severity 5.5
  * @precision high
  * @id js/tainted-format-string
  * @tags security

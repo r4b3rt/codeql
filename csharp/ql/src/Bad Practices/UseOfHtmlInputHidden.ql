@@ -3,6 +3,7 @@
  * @description Finds uses of hidden fields on forms
  * @kind problem
  * @problem.severity recommendation
+ * @security-severity 5.9
  * @precision medium
  * @id cs/web/html-hidden-input
  * @tags security

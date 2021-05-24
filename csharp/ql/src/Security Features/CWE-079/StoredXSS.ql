@@ -4,6 +4,7 @@
  *              scripting vulnerability if the data was originally user-provided.
  * @kind path-problem
  * @problem.severity error
+ * @security-severity 5.5
  * @precision medium
  * @id cs/web/stored-xss
  * @tags security

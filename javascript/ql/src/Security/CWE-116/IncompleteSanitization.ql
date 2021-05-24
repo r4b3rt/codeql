@@ -4,6 +4,7 @@
  *              meta-character may be ineffective.
  * @kind problem
  * @problem.severity warning
+ * @security-severity 5.5
  * @precision high
  * @id js/incomplete-sanitization
  * @tags correctness

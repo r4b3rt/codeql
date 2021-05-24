@@ -4,6 +4,7 @@
  *              malicious SQL code by the user.
  * @kind path-problem
  * @problem.severity error
+ * @security-severity 5.5
  * @precision high
  * @id py/sql-injection
  * @tags security
