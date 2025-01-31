@@ -3,42 +3,68 @@
  */
 
 import semmle.code.java.Type
+private import semmle.code.java.dataflow.DataFlow
+private import semmle.code.java.dataflow.FlowSteps
 
 /** The type `java.net.URLConnection`. */
 class TypeUrlConnection extends RefType {
-  TypeUrlConnection() { hasQualifiedName("java.net", "URLConnection") }
+  TypeUrlConnection() { this.hasQualifiedName("java.net", "URLConnection") }
 }
 
 /** The type `java.net.Socket`. */
 class TypeSocket extends RefType {
-  TypeSocket() { hasQualifiedName("java.net", "Socket") }
+  TypeSocket() { this.hasQualifiedName("java.net", "Socket") }
+}
+
+/** The type `javax.net.SocketFactory` */
+class TypeSocketFactory extends RefType {
+  TypeSocketFactory() { this.hasQualifiedName("javax.net", "SocketFactory") }
 }
 
 /** The type `java.net.URL`. */
 class TypeUrl extends RefType {
-  TypeUrl() { hasQualifiedName("java.net", "URL") }
+  TypeUrl() { this.hasQualifiedName("java.net", "URL") }
+}
+
+/** Specifies that if a `URL` is tainted, then so are its synthetic fields. */
+private class UrlFieldsInheritTaint extends DataFlow::SyntheticFieldContent, TaintInheritingContent {
+  UrlFieldsInheritTaint() { this.getField().matches("java.net.URL.%") }
+}
+
+/** The type `java.net.URLDecoder`. */
+class TypeUrlDecoder extends RefType {
+  TypeUrlDecoder() { this.hasQualifiedName("java.net", "URLDecoder") }
 }
 
 /** The type `java.net.URI`. */
 class TypeUri extends RefType {
-  TypeUri() { hasQualifiedName("java.net", "URI") }
+  TypeUri() { this.hasQualifiedName("java.net", "URI") }
 }
 
 /** The method `java.net.URLConnection::getInputStream`. */
-class URLConnectionGetInputStreamMethod extends Method {
-  URLConnectionGetInputStreamMethod() {
-    getDeclaringType() instanceof TypeUrlConnection and
-    hasName("getInputStream") and
-    hasNoParameters()
+class UrlConnectionGetInputStreamMethod extends Method {
+  UrlConnectionGetInputStreamMethod() {
+    this.getDeclaringType() instanceof TypeUrlConnection and
+    this.hasName("getInputStream") and
+    this.hasNoParameters()
   }
 }
 
 /** The method `java.net.Socket::getInputStream`. */
 class SocketGetInputStreamMethod extends Method {
   SocketGetInputStreamMethod() {
-    getDeclaringType() instanceof TypeSocket and
-    hasName("getInputStream") and
-    hasNoParameters()
+    this.getDeclaringType() instanceof TypeSocket and
+    this.hasName("getInputStream") and
+    this.hasNoParameters()
+  }
+}
+
+/** The method `java.net.Socket::getOutputStream`. */
+class SocketGetOutputStreamMethod extends Method {
+  SocketGetOutputStreamMethod() {
+    this.getDeclaringType() instanceof TypeSocket and
+    this.hasName("getOutputStream") and
+    this.hasNoParameters()
   }
 }
 
@@ -140,6 +166,30 @@ class UrlOpenConnectionMethod extends Method {
   UrlOpenConnectionMethod() {
     this.getDeclaringType() instanceof TypeUrl and
     this.getName() = "openConnection"
+  }
+}
+
+/** The method `java.net.URLDecoder::decode`. */
+class UrlDecodeMethod extends Method {
+  UrlDecodeMethod() {
+    this.getDeclaringType() instanceof TypeUrlDecoder and
+    this.getName() = "decode"
+  }
+}
+
+/** The method `javax.net.SocketFactory::createSocket`. */
+class CreateSocketMethod extends Method {
+  CreateSocketMethod() {
+    this.hasName("createSocket") and
+    this.getDeclaringType().getAnAncestor() instanceof TypeSocketFactory
+  }
+}
+
+/** The method `javax.net.Socket::connect`. */
+class SocketConnectMethod extends Method {
+  SocketConnectMethod() {
+    this.hasName("connect") and
+    this.getDeclaringType() instanceof TypeSocket
   }
 }
 

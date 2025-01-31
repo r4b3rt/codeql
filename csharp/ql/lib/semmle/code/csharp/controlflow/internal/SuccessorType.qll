@@ -26,9 +26,6 @@ private newtype TSuccessorType =
 class SuccessorType extends TSuccessorType {
   /** Gets a textual representation of successor type. */
   string toString() { none() }
-
-  /** Holds if this successor type matches completion `c`. */
-  deprecated predicate matchesCompletion(Completion c) { this = c.getAMatchingSuccessorType() }
 }
 
 /** Provides different types of control flow successor types. */
@@ -77,7 +74,7 @@ module SuccessorTypes {
   class BooleanSuccessor extends ConditionalSuccessor, TBooleanSuccessor {
     override boolean getValue() { this = TBooleanSuccessor(result) }
 
-    override string toString() { result = getValue().toString() }
+    override string toString() { result = this.getValue().toString() }
   }
 
   /**
@@ -129,7 +126,7 @@ module SuccessorTypes {
    * }
    * ```
    *
-   * has a control flow graph containing macthing successors:
+   * has a control flow graph containing matching successors:
    *
    * ```
    *      switch
@@ -233,7 +230,7 @@ module SuccessorTypes {
    * }
    * ```
    *
-   * The node `return x;` is a `break` succedssor of the node `break;`.
+   * The node `return x;` is a `break` successor of the node `break;`.
    */
   class BreakSuccessor extends SuccessorType, TBreakSuccessor {
     override string toString() { result = "break" }
@@ -310,7 +307,7 @@ module SuccessorTypes {
     /** Gets the type of exception. */
     ExceptionClass getExceptionClass() { this = TExceptionSuccessor(result) }
 
-    override string toString() { result = "exception(" + getExceptionClass().getName() + ")" }
+    override string toString() { result = "exception(" + this.getExceptionClass().getName() + ")" }
   }
 
   /**

@@ -7,9 +7,11 @@ import semmle.code.java.frameworks.spring.Spring
 import semmle.code.java.frameworks.JaxWS
 import semmle.code.java.frameworks.javase.Http
 import semmle.code.java.dataflow.DataFlow
-import semmle.code.java.dataflow.TaintTracking
-private import semmle.code.java.StringFormat
+import semmle.code.java.frameworks.Properties
+private import semmle.code.java.controlflow.Guards
+private import semmle.code.java.dataflow.StringPrefixes
 private import semmle.code.java.dataflow.ExternalFlow
+private import semmle.code.java.security.Sanitizers
 
 /**
  * A unit class for adding additional taint steps that are specific to server-side request forgery (SSRF) attacks.
@@ -34,181 +36,129 @@ private class DefaultRequestForgeryAdditionalTaintStep extends RequestForgeryAdd
   }
 }
 
+private class TypePropertiesRequestForgeryAdditionalTaintStep extends RequestForgeryAdditionalTaintStep
+{
+  override predicate propagatesTaint(DataFlow::Node pred, DataFlow::Node succ) {
+    exists(MethodCall ma |
+      // Properties props = new Properties();
+      // props.setProperty("jdbcUrl", tainted);
+      // Propagate tainted value to the qualifier `props`
+      ma.getMethod() instanceof PropertiesSetPropertyMethod and
+      ma.getArgument(0).(CompileTimeConstantExpr).getStringValue() = "jdbcUrl" and
+      pred.asExpr() = ma.getArgument(1) and
+      succ.asExpr() = ma.getQualifier()
+    )
+  }
+}
+
 /** A data flow sink for server-side request forgery (SSRF) vulnerabilities. */
 abstract class RequestForgerySink extends DataFlow::Node { }
 
-private class UrlOpenSinkAsRequestForgerySink extends RequestForgerySink {
-  UrlOpenSinkAsRequestForgerySink() { sinkNode(this, "open-url") }
+private class DefaultRequestForgerySink extends RequestForgerySink {
+  DefaultRequestForgerySink() { sinkNode(this, "request-forgery") }
 }
 
 /** A sanitizer for request forgery vulnerabilities. */
 abstract class RequestForgerySanitizer extends DataFlow::Node { }
 
-private class PrimitiveSanitizer extends RequestForgerySanitizer {
-  PrimitiveSanitizer() {
-    this.getType() instanceof PrimitiveType or
-    this.getType() instanceof BoxedType or
-    this.getType() instanceof NumberType
-  }
-}
+private class PrimitiveSanitizer extends RequestForgerySanitizer instanceof SimpleTypeSanitizer { }
 
-private class HostnameSanitizingConstantPrefix extends CompileTimeConstantExpr {
+/**
+ * A string constant that contains a prefix which looks like when it is prepended to untrusted
+ * input, it will restrict the host or entity addressed.
+ *
+ * For example, anything containing `?` or `#`, or a slash that doesn't appear to be a protocol
+ * specifier (e.g. `http://` is not sanitizing), or specifically the string "/".
+ */
+class HostnameSanitizingPrefix extends InterestingPrefix {
   int offset;
 
-  HostnameSanitizingConstantPrefix() {
-    // Matches strings that look like when prepended to untrusted input, they will restrict
-    // the host or entity addressed: for example, anything containing `?` or `#`, or a slash that
-    // doesn't appear to be a protocol specifier (e.g. `http://` is not sanitizing), or specifically
-    // the string "/".
-    exists(
-      this.getStringValue()
-          .regexpFind(".*([?#]|[^?#:/\\\\][/\\\\]).*|[/\\\\][^/\\\\].*|^/$", 0, offset)
-    )
+  HostnameSanitizingPrefix() {
+    exists(this.getStringValue().regexpFind("([?#]|[^?#:/\\\\][/\\\\])|^/$", 0, offset))
   }
 
-  /**
-   * Gets the offset in this constant string where a sanitizing substring begins.
-   */
-  int getOffset() { result = offset }
-}
-
-private Expr getAHostnameSanitizingPrefix() {
-  result instanceof HostnameSanitizingConstantPrefix
-  or
-  result.(AddExpr).getAnOperand() = getAHostnameSanitizingPrefix()
-}
-
-private class StringBuilderAppend extends MethodAccess {
-  StringBuilderAppend() {
-    this.getMethod().getDeclaringType() instanceof StringBuildingType and
-    this.getMethod().hasName("append")
-  }
-}
-
-private class StringBuilderConstructorOrAppend extends Call {
-  StringBuilderConstructorOrAppend() {
-    this instanceof StringBuilderAppend or
-    this.(ClassInstanceExpr).getConstructedType() instanceof StringBuildingType
-  }
-}
-
-private Expr getQualifier(Expr e) { result = e.(MethodAccess).getQualifier() }
-
-/**
- * An extension of `StringBuilderVar` that also accounts for strings appended in StringBuilder/Buffer's constructor
- * and in `append` calls chained onto the constructor call.
- *
- * The original `StringBuilderVar` doesn't care about these because it is designed to model taint, and
- * in taint rules terms these are not needed, as the connection between construction, appends and the
- * eventual `toString` is more obvious.
- */
-private class StringBuilderVarExt extends StringBuilderVar {
-  /**
-   * Returns a first assignment after this StringBuilderVar is first assigned.
-   *
-   * For example, for `StringBuilder sbv = new StringBuilder("1").append("2"); sbv.append("3").append("4");`
-   * this returns the append of `"3"`.
-   */
-  private StringBuilderAppend getAFirstAppendAfterAssignment() {
-    result = this.getAnAppend() and not result = this.getNextAppend(_)
-  }
-
-  /**
-   * Gets the next `append` after `prev`, where `prev` is, perhaps after some more `append` or other
-   * chained calls, assigned to this `StringBuilderVar`.
-   */
-  private StringBuilderAppend getNextAssignmentChainedAppend(StringBuilderConstructorOrAppend prev) {
-    getQualifier*(result) = this.getAnAssignedValue() and
-    result.getQualifier() = prev
-  }
-
-  /**
-   * Get a constructor call or `append` call that contributes a string to this string builder.
-   */
-  StringBuilderConstructorOrAppend getAConstructorOrAppend() {
-    exists(this.getNextAssignmentChainedAppend(result)) or
-    result = this.getAnAssignedValue() or
-    result = this.getAnAppend()
-  }
-
-  /**
-   * Like `StringBuilderVar.getNextAppend`, except including appends and constructors directly
-   * assigned to this `StringBuilderVar`.
-   */
-  private StringBuilderAppend getNextAppendIncludingAssignmentChains(
-    StringBuilderConstructorOrAppend prev
-  ) {
-    result = getNextAssignmentChainedAppend(prev)
-    or
-    prev = this.getAnAssignedValue() and
-    result = this.getAFirstAppendAfterAssignment()
-    or
-    result = this.getNextAppend(prev)
-  }
-
-  /**
-   * Implements `StringBuilderVarExt.getNextAppendIncludingAssignmentChains+(prev)`.
-   */
-  pragma[nomagic]
-  StringBuilderAppend getSubsequentAppendIncludingAssignmentChains(
-    StringBuilderConstructorOrAppend prev
-  ) {
-    result = this.getNextAppendIncludingAssignmentChains(prev) or
-    result =
-      this.getSubsequentAppendIncludingAssignmentChains(this.getNextAppendIncludingAssignmentChains(prev))
-  }
-}
-
-/**
- * An expression that is sanitized because it is concatenated onto a string that looks like
- * a hostname or a URL separator, preventing the appended string from arbitrarily controlling
- * the addressed server.
- */
-private class HostnameSanitizedExpr extends Expr {
-  HostnameSanitizedExpr() {
-    // Sanitize expressions that come after a sanitizing prefix in a tree of string additions:
-    this =
-      any(AddExpr add | add.getLeftOperand() = getAHostnameSanitizingPrefix()).getRightOperand()
-    or
-    // Sanitize expressions that come after a sanitizing prefix in a sequence of StringBuilder operations:
-    exists(
-      StringBuilderConstructorOrAppend appendSanitizingConstant,
-      StringBuilderAppend subsequentAppend, StringBuilderVarExt v
-    |
-      appendSanitizingConstant = v.getAConstructorOrAppend() and
-      appendSanitizingConstant.getArgument(0) = getAHostnameSanitizingPrefix() and
-      v.getSubsequentAppendIncludingAssignmentChains(appendSanitizingConstant) = subsequentAppend and
-      this = subsequentAppend.getArgument(0)
-    )
-    or
-    // Sanitize expressions that come after a sanitizing prefix in the args to a format call:
-    exists(
-      FormattingCall formatCall, FormatString formatString, HostnameSanitizingConstantPrefix prefix,
-      int sanitizedFromOffset, int laterOffset, int sanitizedArg
-    |
-      formatString = unique(FormatString fs | fs = formatCall.getAFormatString()) and
-      (
-        // A sanitizing argument comes before this:
-        exists(int argIdx |
-          formatCall.getArgumentToBeFormatted(argIdx) = prefix and
-          sanitizedFromOffset = formatString.getAnArgUsageOffset(argIdx)
-        )
-        or
-        // The format string itself sanitizes subsequent arguments:
-        formatString = prefix.getStringValue() and
-        sanitizedFromOffset = prefix.getOffset()
-      ) and
-      laterOffset > sanitizedFromOffset and
-      laterOffset = formatString.getAnArgUsageOffset(sanitizedArg) and
-      this = formatCall.getArgumentToBeFormatted(sanitizedArg)
-    )
-  }
+  override int getOffset() { result = offset }
 }
 
 /**
  * A value that is the result of prepending a string that prevents any value from controlling the
  * host of a URL.
  */
-private class HostnameSantizer extends RequestForgerySanitizer {
-  HostnameSantizer() { this.asExpr() instanceof HostnameSanitizedExpr }
+private class HostnameSanitizer extends RequestForgerySanitizer {
+  HostnameSanitizer() {
+    this.asExpr() = any(HostnameSanitizingPrefix hsp).getAnAppendedExpression()
+  }
+}
+
+/**
+ * An argument to a call to a `.contains()` method that is a sanitizer for URL redirects.
+ *
+ * Matches any method call where the method is named `contains`.
+ */
+private predicate isContainsUrlSanitizer(Guard guard, Expr e, boolean branch) {
+  guard =
+    any(MethodCall method |
+      method.getMethod().getName() = "contains" and
+      e = method.getArgument(0) and
+      branch = true
+    )
+}
+
+/**
+ * An URL argument to a call to `.contains()` that is a sanitizer for URL redirects.
+ *
+ * This `contains` method is usually called on a list, but the sanitizer matches any call to a method
+ * called `contains`, so other methods with the same name will also be considered sanitizers.
+ */
+private class ContainsUrlSanitizer extends RequestForgerySanitizer {
+  ContainsUrlSanitizer() {
+    this = DataFlow::BarrierGuard<isContainsUrlSanitizer/3>::getABarrierNode()
+  }
+}
+
+/**
+ * A check that the URL is relative, and therefore safe for URL redirects.
+ */
+private predicate isRelativeUrlSanitizer(Guard guard, Expr e, boolean branch) {
+  guard =
+    any(MethodCall call |
+      call.getMethod().hasQualifiedName("java.net", "URI", "isAbsolute") and
+      e = call.getQualifier() and
+      branch = false
+    )
+}
+
+/**
+ * A check that the URL is relative, and therefore safe for URL redirects.
+ */
+private class RelativeUrlSanitizer extends RequestForgerySanitizer {
+  RelativeUrlSanitizer() {
+    this = DataFlow::BarrierGuard<isRelativeUrlSanitizer/3>::getABarrierNode()
+  }
+}
+
+/**
+ * A comparison on the host of a url, that is a sanitizer for URL redirects.
+ * E.g. `"example.org".equals(url.getHost())"`
+ */
+private predicate isHostComparisonSanitizer(Guard guard, Expr e, boolean branch) {
+  guard =
+    any(MethodCall equalsCall |
+      equalsCall.getMethod().getName() = "equals" and
+      branch = true and
+      exists(MethodCall hostCall |
+        hostCall = [equalsCall.getQualifier(), equalsCall.getArgument(0)] and
+        hostCall.getMethod().hasQualifiedName("java.net", "URI", "getHost") and
+        e = hostCall.getQualifier()
+      )
+    )
+}
+
+/**
+ * A comparison on the `Host` property of a url, that is a sanitizer for URL redirects.
+ */
+private class HostComparisonSanitizer extends RequestForgerySanitizer {
+  HostComparisonSanitizer() {
+    this = DataFlow::BarrierGuard<isHostComparisonSanitizer/3>::getABarrierNode()
+  }
 }

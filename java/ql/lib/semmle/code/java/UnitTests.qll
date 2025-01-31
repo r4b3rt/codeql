@@ -38,11 +38,12 @@ class TearDownMethod extends Method {
 
 private class TestRelatedAnnotation extends Annotation {
   TestRelatedAnnotation() {
-    this.getType().getPackage().hasName("org.testng.annotations") or
-    this.getType().getPackage().hasName("org.junit") or
-    this.getType().getPackage().hasName("org.junit.runner") or
-    this.getType().getPackage().hasName("org.junit.jupiter.api") or
-    this.getType().getPackage().hasName("org.junit.jupiter.params")
+    this.getType()
+        .getPackage()
+        .hasName([
+            "org.testng.annotations", "org.junit", "org.junit.runner", "org.junit.jupiter.api",
+            "org.junit.jupiter.params"
+          ])
   }
 }
 
@@ -115,7 +116,7 @@ class JUnitJupiterTestMethod extends Method {
  * A JUnit `@Ignore` annotation.
  */
 class JUnitIgnoreAnnotation extends Annotation {
-  JUnitIgnoreAnnotation() { getType().hasQualifiedName("org.junit", "Ignore") }
+  JUnitIgnoreAnnotation() { this.getType().hasQualifiedName("org.junit", "Ignore") }
 }
 
 /**
@@ -124,7 +125,7 @@ class JUnitIgnoreAnnotation extends Annotation {
  */
 class JUnitIgnoredMethod extends Method {
   JUnitIgnoredMethod() {
-    getAnAnnotation() instanceof JUnitIgnoreAnnotation
+    this.getAnAnnotation() instanceof JUnitIgnoreAnnotation
     or
     exists(Class c | c = this.getDeclaringType() |
       c.getAnAnnotation() instanceof JUnitIgnoreAnnotation
@@ -136,14 +137,14 @@ class JUnitIgnoredMethod extends Method {
  * An annotation in TestNG.
  */
 class TestNGAnnotation extends Annotation {
-  TestNGAnnotation() { getType().getPackage().hasName("org.testng.annotations") }
+  TestNGAnnotation() { this.getType().getPackage().hasName("org.testng.annotations") }
 }
 
 /**
  * An annotation of type `org.test.ng.annotations.Test`.
  */
 class TestNGTestAnnotation extends TestNGAnnotation {
-  TestNGTestAnnotation() { getType().hasName("Test") }
+  TestNGTestAnnotation() { this.getType().hasName("Test") }
 }
 
 /**
@@ -158,17 +159,15 @@ class TestNGTestMethod extends Method {
    */
   TestNGDataProviderMethod getADataProvider() {
     exists(TestNGTestAnnotation testAnnotation |
-      testAnnotation = getAnAnnotation() and
+      testAnnotation = this.getAnAnnotation() and
       // The data provider must have the same name as the referenced data provider
-      result.getDataProviderName() =
-        testAnnotation.getValue("dataProvider").(StringLiteral).getRepresentedString()
+      result.getDataProviderName() = testAnnotation.getStringValue("dataProvider")
     |
       // Either the data provider should be on the current class, or a supertype
-      getDeclaringType().getAnAncestor() = result.getDeclaringType()
+      this.getDeclaringType().getAnAncestor() = result.getDeclaringType()
       or
       // Or the data provider class should be declared
-      result.getDeclaringType() =
-        testAnnotation.getValue("dataProviderClass").(TypeLiteral).getReferencedType()
+      result.getDeclaringType() = testAnnotation.getTypeValue("dataProviderClass")
     )
   }
 }
@@ -190,14 +189,14 @@ class TestMethod extends Method {
  * A TestNG annotation used to mark a method that runs "before".
  */
 class TestNGBeforeAnnotation extends TestNGAnnotation {
-  TestNGBeforeAnnotation() { getType().getName().matches("Before%") }
+  TestNGBeforeAnnotation() { this.getType().getName().matches("Before%") }
 }
 
 /**
  * A TestNG annotation used to mark a method that runs "after".
  */
 class TestNGAfterAnnotation extends TestNGAnnotation {
-  TestNGAfterAnnotation() { getType().getName().matches("After%") }
+  TestNGAfterAnnotation() { this.getType().getName().matches("After%") }
 }
 
 /**
@@ -205,7 +204,7 @@ class TestNGAfterAnnotation extends TestNGAnnotation {
  * them as data provider methods for TestNG.
  */
 class TestNGDataProviderAnnotation extends TestNGAnnotation {
-  TestNGDataProviderAnnotation() { getType().hasName("DataProvider") }
+  TestNGDataProviderAnnotation() { this.getType().hasName("DataProvider") }
 }
 
 /**
@@ -213,7 +212,7 @@ class TestNGDataProviderAnnotation extends TestNGAnnotation {
  * them as factory methods for TestNG.
  */
 class TestNGFactoryAnnotation extends TestNGAnnotation {
-  TestNGFactoryAnnotation() { getType().hasName("Factory") }
+  TestNGFactoryAnnotation() { this.getType().hasName("Factory") }
 }
 
 /**
@@ -221,21 +220,19 @@ class TestNGFactoryAnnotation extends TestNGAnnotation {
  * which listeners apply to them.
  */
 class TestNGListenersAnnotation extends TestNGAnnotation {
-  TestNGListenersAnnotation() { getType().hasName("Listeners") }
+  TestNGListenersAnnotation() { this.getType().hasName("Listeners") }
 
   /**
    * Gets a listener defined in this annotation.
    */
-  TestNGListenerImpl getAListener() {
-    result = getAValue("value").(TypeLiteral).getReferencedType()
-  }
+  TestNGListenerImpl getAListener() { result = this.getATypeArrayValue("value") }
 }
 
 /**
  * A concrete implementation class of one or more of the TestNG listener interfaces.
  */
 class TestNGListenerImpl extends Class {
-  TestNGListenerImpl() { getAnAncestor().hasQualifiedName("org.testng", "ITestNGListener") }
+  TestNGListenerImpl() { this.getAnAncestor().hasQualifiedName("org.testng", "ITestNGListener") }
 }
 
 /**
@@ -246,18 +243,18 @@ class TestNGListenerImpl extends Class {
  * an instance of a particular value when running a test method.
  */
 class TestNGDataProviderMethod extends Method {
-  TestNGDataProviderMethod() { getAnAnnotation() instanceof TestNGDataProviderAnnotation }
+  TestNGDataProviderMethod() { this.getAnAnnotation() instanceof TestNGDataProviderAnnotation }
 
   /**
    * Gets the name associated with this data provider.
    */
   string getDataProviderName() {
     result =
-      getAnAnnotation()
+      this.getAnAnnotation()
           .(TestNGDataProviderAnnotation)
           .getValue("name")
           .(StringLiteral)
-          .getRepresentedString()
+          .getValue()
   }
 }
 
@@ -268,7 +265,7 @@ class TestNGDataProviderMethod extends Method {
  * This factory callable is used to generate instances of parameterized test classes.
  */
 class TestNGFactoryCallable extends Callable {
-  TestNGFactoryCallable() { getAnAnnotation() instanceof TestNGFactoryAnnotation }
+  TestNGFactoryCallable() { this.getAnAnnotation() instanceof TestNGFactoryAnnotation }
 }
 
 /**
@@ -276,7 +273,7 @@ class TestNGFactoryCallable extends Callable {
  */
 class ParameterizedJUnitTest extends Class {
   ParameterizedJUnitTest() {
-    getAnAnnotation()
+    this.getAnAnnotation()
         .(RunWithAnnotation)
         .getRunner()
         .(Class)
@@ -289,7 +286,7 @@ class ParameterizedJUnitTest extends Class {
  */
 class JUnitCategoryAnnotation extends Annotation {
   JUnitCategoryAnnotation() {
-    getType().hasQualifiedName("org.junit.experimental.categories", "Category")
+    this.getType().hasQualifiedName("org.junit.experimental.categories", "Category")
   }
 
   /**
@@ -297,7 +294,7 @@ class JUnitCategoryAnnotation extends Annotation {
    */
   Type getACategory() {
     exists(TypeLiteral literal, Expr value |
-      value = getValue("value") and
+      value = this.getValue("value") and
       (
         literal = value or
         literal = value.(ArrayCreationExpr).getInit().getAnInit()
@@ -313,7 +310,7 @@ class JUnitCategoryAnnotation extends Annotation {
  */
 class JUnitTheoryTest extends Class {
   JUnitTheoryTest() {
-    getAnAnnotation()
+    this.getAnAnnotation()
         .(RunWithAnnotation)
         .getRunner()
         .(Class)

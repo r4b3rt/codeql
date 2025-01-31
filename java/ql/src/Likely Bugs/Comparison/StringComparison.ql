@@ -21,7 +21,7 @@ class StringValue extends Expr {
     exists(Method intern |
       intern.getDeclaringType() instanceof TypeString and
       intern.hasName("intern") and
-      this.(MethodAccess).getMethod() = intern
+      this.(MethodCall).getMethod() = intern
     )
     or
     // Ternary conditional operator.
@@ -35,16 +35,15 @@ class StringValue extends Expr {
     variableValuesInterned(this.(VarAccess).getVariable())
     or
     // Method accesses whose results are all interned.
-    forex(ReturnStmt rs | rs.getEnclosingCallable() = this.(MethodAccess).getMethod() |
+    forex(ReturnStmt rs | rs.getEnclosingCallable() = this.(MethodCall).getMethod() |
       rs.getResult().(StringValue).isInterned()
     )
   }
 }
 
-predicate variableValuesInterned(Variable v) {
+pragma[noinline]
+predicate candidateVariable(Variable v) {
   v.fromSource() and
-  // All assignments to variables are interned.
-  forall(StringValue sv | sv = v.getAnAssignedValue() | sv.isInterned()) and
   // For parameters, assume they could be non-interned.
   not v instanceof Parameter and
   // If the string is modified with `+=`, then the new string is not interned
@@ -52,7 +51,13 @@ predicate variableValuesInterned(Variable v) {
   not exists(AssignOp append | append.getDest() = v.getAnAccess())
 }
 
-from EqualityTest e, StringValue lhs, StringValue rhs
+predicate variableValuesInterned(Variable v) {
+  candidateVariable(v) and
+  // All assignments to variables are interned.
+  forall(StringValue sv | sv = v.getAnAssignedValue() | sv.isInterned())
+}
+
+from ReferenceEqualityTest e, StringValue lhs, StringValue rhs
 where
   e.getLeftOperand() = lhs and
   e.getRightOperand() = rhs and

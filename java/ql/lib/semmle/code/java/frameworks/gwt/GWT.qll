@@ -38,7 +38,7 @@ class GwtEntryPointClass extends Class {
     isGwtXmlIncluded()
     implies
     // The entry point is live if it is specified in a `*.gwt.xml` file.
-    exists(getAGwtXmlFile())
+    exists(this.getAGwtXmlFile())
   }
 }
 
@@ -48,7 +48,7 @@ class GwtEntryPointClass extends Class {
  */
 class GwtCompilationUnit extends CompilationUnit {
   GwtCompilationUnit() {
-    exists(GwtXmlFile f | getRelativePath().matches(f.getARelativeSourcePath() + "%"))
+    exists(GwtXmlFile f | this.getRelativePath().matches(f.getARelativeSourcePath() + "%"))
   }
 }
 
@@ -92,8 +92,8 @@ private predicate jsniComment(Javadoc jsni, Method m) {
  * A JavaScript Native Interface (JSNI) comment that contains JavaScript code
  * implementing a native method.
  */
-class JSNIComment extends Javadoc {
-  JSNIComment() { jsniComment(this, _) }
+class JsniComment extends Javadoc {
+  JsniComment() { jsniComment(this, _) }
 
   /** Gets the method implemented by this comment. */
   Method getImplementedMethod() { jsniComment(this, result) }
@@ -102,9 +102,9 @@ class JSNIComment extends Javadoc {
 /**
  * A JavaScript Native Interface (JSNI) method.
  */
-class JSNIMethod extends Method {
-  JSNIMethod() { jsniComment(_, this) }
+class JsniMethod extends Method {
+  JsniMethod() { jsniComment(_, this) }
 
   /** Gets the comment containing the JavaScript code for this method. */
-  JSNIComment getImplementation() { jsniComment(result, this) }
+  JsniComment getImplementation() { jsniComment(result, this) }
 }

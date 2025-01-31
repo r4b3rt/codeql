@@ -15,7 +15,7 @@ import semmle.code.cpp.Struct
  * ```
  */
 class Union extends Struct {
-  Union() { usertypes(underlyingElement(this), _, 3) }
+  Union() { usertypes(underlyingElement(this), _, [3, 17]) }
 
   override string getAPrimaryQlClass() { result = "Union" }
 
@@ -37,7 +37,7 @@ class Union extends Struct {
  * ```
  */
 class LocalUnion extends Union {
-  LocalUnion() { isLocal() }
+  LocalUnion() { this.isLocal() }
 
   override string getAPrimaryQlClass() { result = "LocalUnion" }
 }

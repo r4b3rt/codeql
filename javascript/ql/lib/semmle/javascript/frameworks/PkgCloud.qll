@@ -11,17 +11,11 @@ module PkgCloud {
   private predicate takesConfigurationObject(DataFlow::InvokeNode invk, int i) {
     exists(DataFlow::ModuleImportNode mod, DataFlow::SourceNode receiver, string type |
       mod.getPath() = "pkgcloud" and
-      (
-        type = "compute" or
-        type = "storage" or
-        type = "database" or
-        type = "dns" or
-        type = "blockstorage" or
-        type = "loadbalancer" or
-        type = "network" or
-        type = "orchestration" or
-        type = "cdn"
-      ) and
+      type =
+        [
+          "compute", "storage", "database", "dns", "blockstorage", "loadbalancer", "network",
+          "orchestration", "cdn"
+        ] and
       (
         // require('pkgcloud').compute
         receiver = mod.getAPropertyRead(type)
@@ -37,13 +31,13 @@ module PkgCloud {
   /**
    * An expression that is used for authentication through pkgcloud.
    */
-  class Credentials extends CredentialsExpr {
+  class Credentials extends CredentialsNode {
     string kind;
 
     Credentials() {
-      exists(string propertyName, DataFlow::InvokeNode invk, int i |
-        takesConfigurationObject(invk, i) and
-        this = invk.getOptionArgument(0, propertyName).asExpr()
+      exists(string propertyName, DataFlow::InvokeNode invk |
+        takesConfigurationObject(invk, _) and
+        this = invk.getOptionArgument(0, propertyName)
       |
         /*
          * Catch-all support for the following providers:
@@ -61,20 +55,10 @@ module PkgCloud {
          */
 
         kind = "user name" and
-        (
-          propertyName = "account" or
-          propertyName = "keyId" or
-          propertyName = "storageAccount" or
-          propertyName = "username"
-        )
+        propertyName = ["account", "keyId", "storageAccount", "username"]
         or
         kind = "password" and
-        (
-          propertyName = "key" or
-          propertyName = "apiKey" or
-          propertyName = "storageAccessKey" or
-          propertyName = "password"
-        )
+        propertyName = ["key", "apiKey", "storageAccessKey", "password"]
         or
         kind = "token" and
         propertyName = "token"

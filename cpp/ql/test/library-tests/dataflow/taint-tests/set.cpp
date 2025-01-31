@@ -17,7 +17,7 @@ void test_set()
 	std::set<char *> s1, s2, s3, s4, s5, s6;
 
 	sink(s1.insert("abc").first);
-	sink(s2.insert(source()).first); // $ ir MISSING: ast
+	sink(s2.insert(source()).first); // $ MISSING: ast,ir
 	sink(s3.insert(s3.begin(), "abc"));
 	sink(s4.insert(s4.begin(), source())); // $ ast,ir
 	s5.insert(s1.begin(), s1.end());
@@ -68,8 +68,8 @@ void test_set()
 	s11.insert("c");
 	sink(s11.lower_bound("b")); // $ ast,ir
 	sink(s11.upper_bound("b")); // $ ast,ir
-	sink(s11.equal_range("b").first); // $ ir MISSING: ast
-	sink(s11.equal_range("b").second); // $ ir MISSING: ast
+	sink(s11.equal_range("b").first); // $ MISSING: ast,ir
+	sink(s11.equal_range("b").second); // $ MISSING: ast,ir
 
 	// swap
 	std::set<char *> s12, s13, s14, s15;
@@ -81,10 +81,10 @@ void test_set()
 	sink(s15); // $ ast,ir
 	s12.swap(s13);
 	s14.swap(s15);
-	sink(s12); // $ SPURIOUS: ast,ir
-	sink(s13); // $ ast,ir
-	sink(s14); // $ ast,ir
-	sink(s15); // $ SPURIOUS: ast,ir
+	sink(s12); // $ SPURIOUS: ast
+	sink(s13); // $ ir
+	sink(s14); // $ ir
+	sink(s15); // $ SPURIOUS: ast
 
 	// merge
 	std::set<char *> s16, s17, s18, s19;
@@ -117,7 +117,7 @@ void test_set()
 	std::set<char *> s21, s22;
 	sink(s21.emplace("abc").first);
 	sink(s21);
-	sink(s21.emplace(source()).first); // $ ir MISSING: ast
+	sink(s21.emplace(source()).first); // $ MISSING: ast,ir
 	sink(s21); // $ ast,ir
 	sink(s22.emplace_hint(s22.begin(), "abc"));
 	sink(s22);
@@ -131,7 +131,7 @@ void test_unordered_set()
 	std::unordered_set<char *> s1, s2, s3, s4, s5, s6;
 
 	sink(s1.insert("abc").first);
-	sink(s2.insert(source()).first); // $ ir MISSING: ast
+	sink(s2.insert(source()).first); // $ MISSING: ast,ir
 	sink(s3.insert(s3.begin(), "abc"));
 	sink(s4.insert(s4.begin(), source())); // $ ast,ir
 	s5.insert(s1.begin(), s1.end());
@@ -180,8 +180,8 @@ void test_unordered_set()
 	s11.insert("a");
 	s11.insert(source());
 	s11.insert("c");
-	sink(s11.equal_range("b").first); // $ ir MISSING: ast
-	sink(s11.equal_range("b").second); // $ ir MISSING: ast
+	sink(s11.equal_range("b").first); // $ MISSING: ast,ir
+	sink(s11.equal_range("b").second); // $ MISSING: ast,ir
 
 	// swap
 	std::unordered_set<char *> s12, s13, s14, s15;
@@ -193,10 +193,10 @@ void test_unordered_set()
 	sink(s15); // $ ast,ir
 	s12.swap(s13);
 	s14.swap(s15);
-	sink(s12); // $ SPURIOUS: ast,ir
-	sink(s13); // $ ast,ir
-	sink(s14); // $ ast,ir
-	sink(s15); // $ SPURIOUS: ast,ir
+	sink(s12); // $ SPURIOUS: ast
+	sink(s13); // $ ir
+	sink(s14); // $ ir
+	sink(s15); // $ SPURIOUS: ast
 
 	// merge
 	std::unordered_set<char *> s16, s17, s18, s19;
@@ -229,7 +229,7 @@ void test_unordered_set()
 	std::unordered_set<char *> s21, s22;
 	sink(s21.emplace("abc").first);
 	sink(s21);
-	sink(s21.emplace(source()).first); // $ ir MISSING: ast
+	sink(s21.emplace(source()).first); // $ MISSING: ast,ir
 	sink(s21); // $ ast,ir
 	sink(s22.emplace_hint(s22.begin(), "abc"));
 	sink(s22);

@@ -67,7 +67,7 @@ private predicate javadocLines(Javadoc j, File f, int start, int end) {
 }
 
 private class JavadocFirst extends Javadoc {
-  JavadocFirst() { not exists(Javadoc prev | this = getNextComment(prev)) }
+  JavadocFirst() { not this = getNextComment(_) }
 }
 
 /**
@@ -107,8 +107,8 @@ class CommentedOutCode extends JavadocFirst {
   CommentedOutCode() {
     anyCount(this) > 0 and
     codeCount(this).(float) / anyCount(this).(float) > 0.5 and
-    not this instanceof JSNIComment and
-    not this instanceof OCNIComment
+    not this instanceof JsniComment and
+    not this instanceof OcniComment
   }
 
   /**
@@ -122,9 +122,9 @@ class CommentedOutCode extends JavadocFirst {
   }
 
   override predicate hasLocationInfo(string path, int sl, int sc, int el, int ec) {
-    path = getLocation().getFile().getAbsolutePath() and
-    sl = getLocation().getStartLine() and
-    sc = getLocation().getStartColumn() and
+    path = this.getLocation().getFile().getAbsolutePath() and
+    sl = this.getLocation().getStartLine() and
+    sc = this.getLocation().getStartColumn() and
     exists(Location end | end = this.getLastSuccessor().getLocation() |
       el = end.getEndLine() and
       ec = end.getEndColumn()

@@ -1,10 +1,9 @@
-using Microsoft.CodeAnalysis;
-using Semmle.Extraction.CSharp.Populators;
-using System.Linq;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Semmle.Extraction.Entities;
-using System.IO;
 using System;
+using System.IO;
+using System.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Semmle.Extraction.CSharp.Populators;
 
 namespace Semmle.Extraction.CSharp.Entities
 {
@@ -24,7 +23,13 @@ namespace Semmle.Extraction.CSharp.Entities
 
         public enum Kind
         {
-            None, Ref, Out, Params, This, In
+            None = 0,
+            Ref = 1,
+            Out = 2,
+            Params = 3,
+            This = 4,
+            In = 5,
+            RefReadOnly = 6
         }
 
         protected virtual int Ordinal => Symbol.Ordinal;
@@ -41,6 +46,8 @@ namespace Semmle.Extraction.CSharp.Entities
                         return Kind.Ref;
                     case RefKind.In:
                         return Kind.In;
+                    case RefKind.RefReadOnlyParameter:
+                        return Kind.RefReadOnly;
                     default:
                         if (Symbol.IsParams)
                             return Kind.Params;
@@ -55,11 +62,17 @@ namespace Semmle.Extraction.CSharp.Entities
             }
         }
 
-        public static Parameter Create(Context cx, IParameterSymbol param, IEntity parent, Parameter? original = null) =>
-            ParameterFactory.Instance.CreateEntity(cx, param, (param, parent, original));
+        public static Parameter Create(Context cx, IParameterSymbol param, IEntity parent, Parameter? original = null)
+        {
+            var cachedSymbol = cx.GetPossiblyCachedParameterSymbol(param);
+            return ParameterFactory.Instance.CreateEntity(cx, cachedSymbol, (cachedSymbol, parent, original));
+        }
 
-        public static Parameter Create(Context cx, IParameterSymbol param) =>
-            ParameterFactory.Instance.CreateEntity(cx, param, (param, null, null));
+        public static Parameter Create(Context cx, IParameterSymbol param)
+        {
+            var cachedSymbol = cx.GetPossiblyCachedParameterSymbol(param);
+            return ParameterFactory.Instance.CreateEntity(cx, cachedSymbol, (cachedSymbol, null, null));
+        }
 
         public override void WriteId(EscapingTextWriter trapFile)
         {
@@ -85,7 +98,7 @@ namespace Semmle.Extraction.CSharp.Entities
                 // This breaks our database constraints.
                 // Generate an impossible name to ensure that it doesn't conflict.
                 var conflictingCount = Symbol.ContainingSymbol.GetParameters().Count(p => p.Ordinal < Symbol.Ordinal && p.Name == Symbol.Name);
-                return conflictingCount > 0 ? Symbol.Name + "`" + conflictingCount : Symbol.Name;
+                return conflictingCount > 0 ? $"{Symbol.Name}`{conflictingCount}" : Symbol.Name;
             }
         }
 
@@ -94,6 +107,7 @@ namespace Semmle.Extraction.CSharp.Entities
             PopulateAttributes();
             PopulateNullability(trapFile, Symbol.GetAnnotatedType());
             PopulateRefKind(trapFile, Symbol.RefKind);
+            PopulateScopedKind(trapFile, Symbol.ScopedKind);
 
             if (Symbol.Name != Original.Symbol.Name)
                 Context.ModelError(Symbol, "Inconsistent parameter declaration");

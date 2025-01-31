@@ -61,8 +61,8 @@ void testReferencePointer1()
 
 		system(buffer); // BAD
 		system(data); // BAD
-		system(dataref); // BAD [NOT DETECTED]
-		system(data2); // BAD [NOT DETECTED]
+		system(dataref); // BAD
+		system(data2); // BAD
 	}
 }
 
@@ -106,4 +106,10 @@ void testAcceptRecv(int socket1, int socket2)
 		recv(socket2, buffer, 1024);
 		LoadLibrary(buffer); // BAD: using data from recv
 	}
+}
+
+void argumentUse(char *ptr, FILE *stream) {
+	char buffer[80];
+	ptr = fgets(buffer, sizeof(buffer), stream);
+	system(ptr); // BAD
 }

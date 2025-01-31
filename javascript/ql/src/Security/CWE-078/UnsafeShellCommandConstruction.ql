@@ -4,7 +4,7 @@
  *              user to change the meaning of the command.
  * @kind path-problem
  * @problem.severity error
- * @security-severity 9.8
+ * @security-severity 6.3
  * @precision high
  * @id js/shell-command-constructed-from-input
  * @tags correctness
@@ -15,10 +15,12 @@
 
 import javascript
 import semmle.javascript.security.dataflow.UnsafeShellCommandConstructionQuery
-import DataFlow::PathGraph
+import UnsafeShellCommandConstructionFlow::PathGraph
 
-from Configuration cfg, DataFlow::PathNode source, DataFlow::PathNode sink, Sink sinkNode
-where cfg.hasFlowPath(source, sink) and sinkNode = sink.getNode()
-select sinkNode.getAlertLocation(), source, sink, "$@ based on $@ is later used in $@.",
-  sinkNode.getAlertLocation(), sinkNode.getSinkType(), source.getNode(), "library input",
-  sinkNode.getCommandExecution(), "shell command"
+from
+  UnsafeShellCommandConstructionFlow::PathNode source,
+  UnsafeShellCommandConstructionFlow::PathNode sink, Sink sinkNode
+where UnsafeShellCommandConstructionFlow::flowPath(source, sink) and sinkNode = sink.getNode()
+select sinkNode.getAlertLocation(), source, sink,
+  "This " + sinkNode.getSinkType() + " which depends on $@ is later used in a $@.",
+  source.getNode(), "library input", sinkNode.getCommandExecution(), "shell command"

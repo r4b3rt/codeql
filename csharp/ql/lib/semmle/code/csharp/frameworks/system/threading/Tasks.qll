@@ -2,6 +2,7 @@
 
 import csharp
 private import semmle.code.csharp.frameworks.system.Threading
+private import semmle.code.csharp.dataflow.internal.DataFlowPrivate
 
 /** The `System.Threading.Tasks` namespace. */
 class SystemThreadingTasksNamespace extends Namespace {
@@ -28,9 +29,9 @@ class SystemThreadingTasksTaskClass extends SystemThreadingTasksClass {
   SystemThreadingTasksTaskClass() { this.hasName("Task") }
 }
 
-/** The `System.Threading.Tasks.Task<T>` class. */
+/** The ``System.Threading.Tasks.Task`1`` class. */
 class SystemThreadingTasksTaskTClass extends SystemThreadingTasksUnboundGenericClass {
-  SystemThreadingTasksTaskTClass() { this.hasName("Task<>") }
+  SystemThreadingTasksTaskTClass() { this.hasName("Task`1") }
 
   /** Gets the `Result` property. */
   Property getResultProperty() {
@@ -44,4 +45,21 @@ class SystemThreadingTasksTaskTClass extends SystemThreadingTasksUnboundGenericC
 
   /** Gets the `ConfigureAwait` method. */
   Method getConfigureAwaitMethod() { result = this.getAMethod("ConfigureAwait") }
+}
+
+abstract private class SyntheticTaskField extends SyntheticField {
+  bindingset[this]
+  SyntheticTaskField() { any() }
+
+  override Type getType() { result instanceof SystemThreadingTasksTaskTClass }
+}
+
+private class SyntheticTaskAwaiterUnderlyingTaskField extends SyntheticTaskField {
+  SyntheticTaskAwaiterUnderlyingTaskField() { this = "m_task_task_awaiter" }
+}
+
+private class SyntheticConfiguredTaskAwaitableUnderlyingTaskField extends SyntheticTaskField {
+  SyntheticConfiguredTaskAwaitableUnderlyingTaskField() {
+    this = "m_task_configured_task_awaitable"
+  }
 }

@@ -1,92 +1,10 @@
 /**
  * Provides classes modeling cryptographic algorithms, separated into strong and weak variants.
  *
- * The classification into strong and weak are based on Wikipedia, OWASP and google (2017).
+ * The classification into strong and weak are based on Wikipedia, OWASP and Google (2021).
  */
 
-/**
- * Names of cryptographic algorithms, separated into strong and weak variants.
- *
- * The names are normalized: upper-case, no spaces, dashes or underscores.
- *
- * The names are inspired by the names used in real world crypto libraries.
- *
- * The classification into strong and weak are based on Wikipedia, OWASP and google (2017).
- */
-private module AlgorithmNames {
-  predicate isStrongHashingAlgorithm(string name) {
-    name = "DSA" or
-    name = "ED25519" or
-    name = "ES256" or
-    name = "ECDSA256" or
-    name = "ES384" or
-    name = "ECDSA384" or
-    name = "ES512" or
-    name = "ECDSA512" or
-    name = "SHA2" or
-    name = "SHA224" or
-    name = "SHA256" or
-    name = "SHA384" or
-    name = "SHA512" or
-    name = "SHA3" or
-    name = "SHA3224" or
-    name = "SHA3256" or
-    name = "SHA3384" or
-    name = "SHA3512"
-  }
-
-  predicate isWeakHashingAlgorithm(string name) {
-    name = "HAVEL128" or
-    name = "MD2" or
-    name = "MD4" or
-    name = "MD5" or
-    name = "PANAMA" or
-    name = "RIPEMD" or
-    name = "RIPEMD128" or
-    name = "RIPEMD256" or
-    name = "RIPEMD160" or
-    name = "RIPEMD320" or
-    name = "SHA0" or
-    name = "SHA1"
-  }
-
-  predicate isStrongEncryptionAlgorithm(string name) {
-    name = "AES" or
-    name = "AES128" or
-    name = "AES192" or
-    name = "AES256" or
-    name = "AES512" or
-    name = "RSA" or
-    name = "RABBIT" or
-    name = "BLOWFISH"
-  }
-
-  predicate isWeakEncryptionAlgorithm(string name) {
-    name = "DES" or
-    name = "3DES" or
-    name = "TRIPLEDES" or
-    name = "TDEA" or
-    name = "TRIPLEDEA" or
-    name = "ARC2" or
-    name = "RC2" or
-    name = "ARC4" or
-    name = "RC4" or
-    name = "ARCFOUR" or
-    name = "ARC5" or
-    name = "RC5"
-  }
-
-  predicate isStrongPasswordHashingAlgorithm(string name) {
-    name = "ARGON2" or
-    name = "PBKDF2" or
-    name = "BCRYPT" or
-    name = "SCRYPT"
-  }
-
-  predicate isWeakPasswordHashingAlgorithm(string name) { none() }
-}
-
-private import AlgorithmNames
+private import internal.CryptoAlgorithmNames
 
 /**
  * A cryptographic algorithm.
@@ -109,11 +27,31 @@ private newtype TCryptographicAlgorithm =
   }
 
 /**
+ * Gets the most specific `CryptographicAlgorithm` that matches the given `name`.
+ * A matching algorithm is one where the name of the algorithm matches the start of name, with allowances made for different name formats.
+ * In the case that multiple `CryptographicAlgorithm`s match the given `name`, the algorithm(s) with the longest name will be selected. This is intended to select more specific versions of algorithms when multiple versions could match - for example "SHA3_224" matches against both "SHA3" and "SHA3224", but the latter is a more precise match.
+ */
+bindingset[name]
+private CryptographicAlgorithm getBestAlgorithmForName(string name) {
+  result =
+    max(CryptographicAlgorithm algorithm |
+      algorithm.getName() =
+        [
+          name.toUpperCase(), // the full name
+          name.toUpperCase().regexpCapture("^([\\w]+)(?:-.*)?$", 1), // the name prior to any dashes or spaces
+          name.toUpperCase().regexpCapture("^([A-Z0-9]+)(?:(-|_).*)?$", 1) // the name prior to any dashes, spaces, or underscores
+        ].regexpReplaceAll("[-_ ]", "") // strip dashes, underscores, and spaces
+    |
+      algorithm order by algorithm.getName().length()
+    )
+}
+
+/**
  * A cryptographic algorithm.
  */
 abstract class CryptographicAlgorithm extends TCryptographicAlgorithm {
   /** Gets a textual representation of this element. */
-  string toString() { result = getName() }
+  string toString() { result = this.getName() }
 
   /**
    * Gets the normalized name of this algorithm (upper-case, no spaces, dashes or underscores).
@@ -121,13 +59,11 @@ abstract class CryptographicAlgorithm extends TCryptographicAlgorithm {
   abstract string getName();
 
   /**
-   * Holds if the name of this algorithm matches `name` modulo case,
-   * white space, dashes, and underscores.
+   * Holds if the name of this algorithm is the most specific match for `name`.
+   * This predicate matches quite liberally to account for different ways of formatting algorithm names, e.g. using dashes, underscores, or spaces as separators, including or not including block modes of operation, etc.
    */
   bindingset[name]
-  predicate matchesName(string name) {
-    name.toUpperCase().regexpReplaceAll("[-_ ]", "") = getName()
-  }
+  predicate matchesName(string name) { this = getBestAlgorithmForName(name) }
 
   /**
    * Holds if this algorithm is weak.
@@ -161,6 +97,9 @@ class EncryptionAlgorithm extends MkEncryptionAlgorithm, CryptographicAlgorithm 
   override string getName() { result = name }
 
   override predicate isWeak() { isWeak = true }
+
+  /** Holds if this algorithm is a stream cipher. */
+  predicate isStreamCipher() { isStreamCipher(name) }
 }
 
 /**

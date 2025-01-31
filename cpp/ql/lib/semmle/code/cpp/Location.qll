@@ -10,12 +10,14 @@ import semmle.code.cpp.File
  */
 class Location extends @location {
   /** Gets the container corresponding to this location. */
+  pragma[nomagic]
   Container getContainer() { this.fullLocationInfo(result, _, _, _, _) }
 
   /** Gets the file corresponding to this location, if any. */
   File getFile() { result = this.getContainer() }
 
   /** Gets the 1-based line number (inclusive) where this location starts. */
+  pragma[nomagic]
   int getStartLine() { this.fullLocationInfo(_, result, _, _, _) }
 
   /** Gets the 1-based column number (inclusive) where this location starts. */
@@ -73,14 +75,30 @@ class Location extends @location {
 
   /** Holds if `this` comes on a line strictly before `l`. */
   pragma[inline]
-  predicate isBefore(Location l) {
-    this.getFile() = l.getFile() and this.getEndLine() < l.getStartLine()
+  predicate isBefore(Location l) { this.isBefore(l, false) }
+
+  /**
+   * Holds if `this` comes strictly before `l`. The boolean `sameLine` is
+   * true if `l` is on the same line as `this`, but starts at a later column.
+   * Otherwise, `sameLine` is false.
+   */
+  pragma[inline]
+  predicate isBefore(Location l, boolean sameLine) {
+    this.getFile() = l.getFile() and
+    (
+      sameLine = false and
+      this.getEndLine() < l.getStartLine()
+      or
+      sameLine = true and
+      this.getEndLine() = l.getStartLine() and
+      this.getEndColumn() < l.getStartColumn()
+    )
   }
 
   /** Holds if location `l` is completely contained within this one. */
   predicate subsumes(Location l) {
-    exists(File f | f = getFile() |
-      exists(int thisStart, int thisEnd | charLoc(f, thisStart, thisEnd) |
+    exists(File f | f = this.getFile() |
+      exists(int thisStart, int thisEnd | this.charLoc(f, thisStart, thisEnd) |
         exists(int lStart, int lEnd | l.charLoc(f, lStart, lEnd) |
           thisStart <= lStart and lEnd <= thisEnd
         )
@@ -97,32 +115,13 @@ class Location extends @location {
    * see `subsumes`.
    */
   predicate charLoc(File f, int start, int end) {
-    f = getFile() and
+    f = this.getFile() and
     exists(int maxCols | maxCols = maxCols(f) |
-      start = getStartLine() * maxCols + getStartColumn() and
-      end = getEndLine() * maxCols + getEndColumn()
+      start = this.getStartLine() * maxCols + this.getStartColumn() and
+      end = this.getEndLine() * maxCols + this.getEndColumn()
     )
   }
 }
-
-/**
- * DEPRECATED: Use `Location` instead.
- * A location of an element. Not used for expressions or statements, which
- * instead use LocationExpr and LocationStmt respectively.
- */
-deprecated library class LocationDefault extends Location, @location_default { }
-
-/**
- * DEPRECATED: Use `Location` instead.
- * A location of a statement.
- */
-deprecated library class LocationStmt extends Location, @location_stmt { }
-
-/**
- * DEPRECATED: Use `Location` instead.
- * A location of an expression.
- */
-deprecated library class LocationExpr extends Location, @location_expr { }
 
 /**
  * Gets the length of the longest line in file `f`.
@@ -144,7 +143,7 @@ class Locatable extends Element { }
  * expressions, one for statements and one for other program elements.
  */
 class UnknownLocation extends Location {
-  UnknownLocation() { getFile().getAbsolutePath() = "" }
+  UnknownLocation() { this.getFile().getAbsolutePath() = "" }
 }
 
 /**

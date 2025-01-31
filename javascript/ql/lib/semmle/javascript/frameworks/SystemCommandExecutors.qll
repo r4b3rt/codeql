@@ -79,13 +79,13 @@ private class SystemCommandExecutors extends SystemCommandExecution, DataFlow::I
     sync = true
   }
 
-  override DataFlow::Node getACommandArgument() { result = getArgument(cmdArg) }
+  override DataFlow::Node getACommandArgument() { result = this.getArgument(cmdArg) }
 
   override predicate isShellInterpreted(DataFlow::Node arg) {
-    arg = getACommandArgument() and shell = true
+    arg = this.getACommandArgument() and shell = true
   }
 
-  override DataFlow::Node getArgumentList() { shell = false and result = getArgument(1) }
+  override DataFlow::Node getArgumentList() { shell = false and result = this.getArgument(1) }
 
   override predicate isSync() { sync = true }
 
@@ -93,9 +93,9 @@ private class SystemCommandExecutors extends SystemCommandExecution, DataFlow::I
     (
       if optionsArg < 0
       then
-        result = getArgument(getNumArgument() + optionsArg) and
-        getNumArgument() + optionsArg > cmdArg
-      else result = getArgument(optionsArg)
+        result = this.getArgument(this.getNumArgument() + optionsArg) and
+        this.getNumArgument() + optionsArg > cmdArg
+      else result = this.getArgument(optionsArg)
     ) and
     not result.getALocalSource() instanceof DataFlow::FunctionNode and // looks like callback
     not result.getALocalSource() instanceof DataFlow::ArrayCreationNode // looks like argumentlist
@@ -107,9 +107,7 @@ private class SystemCommandExecutors extends SystemCommandExecution, DataFlow::I
  */
 bindingset[name]
 private boolean getSync(string name) {
-  if name.suffix(name.length() - 4) = "Sync" or name.suffix(name.length() - 4) = "sync"
-  then result = true
-  else result = false
+  if name.matches("%Sync") or name.matches("%sync") then result = true else result = false
 }
 
 private class RemoteCommandExecutor extends SystemCommandExecution, DataFlow::InvokeNode {
@@ -133,9 +131,9 @@ private class RemoteCommandExecutor extends SystemCommandExecution, DataFlow::In
     )
   }
 
-  override DataFlow::Node getACommandArgument() { result = getArgument(cmdArg) }
+  override DataFlow::Node getACommandArgument() { result = this.getArgument(cmdArg) }
 
-  override predicate isShellInterpreted(DataFlow::Node arg) { arg = getACommandArgument() }
+  override predicate isShellInterpreted(DataFlow::Node arg) { arg = this.getACommandArgument() }
 
   override predicate isSync() { none() }
 
@@ -145,7 +143,7 @@ private class RemoteCommandExecutor extends SystemCommandExecution, DataFlow::In
 private class Opener extends SystemCommandExecution, DataFlow::InvokeNode {
   Opener() { this = API::moduleImport("opener").getACall() }
 
-  override DataFlow::Node getACommandArgument() { result = getOptionArgument(1, "command") }
+  override DataFlow::Node getACommandArgument() { result = this.getOptionArgument(1, "command") }
 
   override predicate isShellInterpreted(DataFlow::Node arg) { none() }
 

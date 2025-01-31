@@ -1,10 +1,16 @@
+/**
+ * DEPRECATED: Use `semmle.code.cpp.dataflow.new.DataFlow` instead.
+ */
+
 private import cpp
+private import DataFlowPrivate
+private import DataFlowUtil
 
 /**
  * Gets a function that might be called by `call`.
  */
-Function viableCallable(Call call) {
-  result = call.getTarget()
+DataFlowCallable viableCallable(DataFlowCall call) {
+  result = call.(Call).getTarget()
   or
   // If the target of the call does not have a body in the snapshot, it might
   // be because the target is just a header declaration, and the real target
@@ -52,14 +58,16 @@ private predicate functionSignature(Function f, string qualifiedName, int nparam
   not f.isStatic()
 }
 
-/**
- * Holds if the set of viable implementations that can be called by `call`
- * might be improved by knowing the call context.
- */
-predicate mayBenefitFromCallContext(Call call, Function f) { none() }
+/** A parameter position represented by an integer. */
+class ParameterPosition extends int {
+  ParameterPosition() { any(ParameterNode p).isParameterOf(_, this) }
+}
 
-/**
- * Gets a viable dispatch target of `call` in the context `ctx`. This is
- * restricted to those `call`s for which a context might make a difference.
- */
-Function viableImplInCallContext(Call call, Call ctx) { none() }
+/** An argument position represented by an integer. */
+class ArgumentPosition extends int {
+  ArgumentPosition() { any(ArgumentNode a).argumentOf(_, this) }
+}
+
+/** Holds if arguments at position `apos` match parameters at position `ppos`. */
+pragma[inline]
+predicate parameterMatch(ParameterPosition ppos, ArgumentPosition apos) { ppos = apos }

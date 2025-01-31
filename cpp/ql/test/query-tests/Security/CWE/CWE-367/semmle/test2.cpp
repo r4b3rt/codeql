@@ -19,7 +19,7 @@ bool stat(const char *path, stat_data *buf);
 bool fstat(int file, stat_data *buf);
 bool lstat(const char *path, stat_data *buf);
 bool fstatat(int dir, const char *path, stat_data *buf);
-void chmod(const char *path, int setting);
+int chmod(const char *path, int setting);
 int rename(const char *from, const char *to);
 bool remove(const char *path);
 
@@ -199,6 +199,58 @@ void test2_10(int dir, const char *path, int arg)
 	// ...
 }
 
+void test2_11(const char *path, int arg)
+{
+	stat_data buf;
+	int f;
+
+	if (stat(path, &buf))
+	{
+		f = open(path, arg); // GOOD (here stat is just a redundant check that the file exists / path is valid, confirmed by the return value of open) [FALSE POSITIVE]
+		if (f == -1)
+		{
+			// handle error
+		}
+
+		// ...
+	}
+}
+
+void test2_12(const char *path, int arg)
+{
+	stat_data buf;
+	int f;
+
+	if (stat(path, &buf))
+	{
+		if (buf.foo == 11) // check a property of the file
+		{
+			f = open(path, arg); // BAD
+			if (f == -1)
+			{
+				// handle error
+			}
+		}
+
+		// ...
+	}
+}
+
+void test2_13(const char *path, int arg)
+{
+	stat_data buf;
+	FILE *f;
+
+	if (stat(path, &buf)) // check the file does *not* exist
+	{
+		return;
+	}
+
+	f = fopen(path, "wt"); // BAD
+
+	// ...
+}
+
 // --- open -> stat ---
 
 void test3_1(const char *path, int arg)
@@ -355,4 +407,9 @@ void test7_1(const char *path1, const char *path2)
 	{
 		chmod(path2, 1234); // BAD
 	}
+}
+
+int test8(const char *path, int mode)
+{
+    return (chmod(path, mode) == 0 ? 1 : 0); // GOOD
 }

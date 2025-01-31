@@ -15,16 +15,9 @@ import python
 
 predicate func_with_side_effects(Expr e) {
   exists(string name | name = e.(Attribute).getName() or name = e.(Name).getId() |
-    name = "print" or
-    name = "write" or
-    name = "append" or
-    name = "pop" or
-    name = "remove" or
-    name = "discard" or
-    name = "delete" or
-    name = "close" or
-    name = "open" or
-    name = "exit"
+    name in [
+        "print", "write", "append", "pop", "remove", "discard", "delete", "close", "open", "exit"
+      ]
   )
 }
 
@@ -49,4 +42,4 @@ predicate probable_side_effect(Expr e) {
 
 from Assert a, Expr e
 where probable_side_effect(e) and a.contains(e)
-select a, "This 'assert' statement contains $@ which may have side effects.", e, "an expression"
+select a, "This 'assert' statement contains an $@ which may have side effects.", e, "expression"

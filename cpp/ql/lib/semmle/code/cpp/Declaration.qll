@@ -61,16 +61,6 @@ class Declaration extends Locatable, @declaration {
   string getQualifiedName() { result = underlyingElement(this).(Q::Declaration).getQualifiedName() }
 
   /**
-   * DEPRECATED: Prefer `hasGlobalName` or the 2-argument or 3-argument
-   * `hasQualifiedName` predicates. To get the exact same results as this
-   * predicate in all edge cases, use `getQualifiedName()`.
-   *
-   * Holds if this declaration has the fully-qualified name `qualifiedName`.
-   * See `getQualifiedName`.
-   */
-  predicate hasQualifiedName(string qualifiedName) { this.getQualifiedName() = qualifiedName }
-
-  /**
    * Holds if this declaration has a fully-qualified name with a name-space
    * component of `namespaceQualifier`, a declaring type of `typeQualifier`,
    * and a base name of `baseName`. Template parameters and arguments are
@@ -183,9 +173,6 @@ class Declaration extends Locatable, @declaration {
   /** Holds if the declaration has a definition. */
   predicate hasDefinition() { exists(this.getDefinition()) }
 
-  /** DEPRECATED: Use `hasDefinition` instead. */
-  predicate isDefined() { hasDefinition() }
-
   /** Gets the preferred location of this declaration, if any. */
   override Location getLocation() { none() }
 
@@ -200,7 +187,7 @@ class Declaration extends Locatable, @declaration {
       this instanceof Parameter or
       this instanceof ProxyClass or
       this instanceof LocalVariable or
-      this instanceof TemplateParameter or
+      this instanceof TypeTemplateParameter or
       this.(UserType).isLocal()
     )
   }
@@ -209,7 +196,7 @@ class Declaration extends Locatable, @declaration {
   predicate isStatic() { this.hasSpecifier("static") }
 
   /** Holds if this declaration is a member of a class/struct/union. */
-  predicate isMember() { hasDeclaringType() }
+  predicate isMember() { this.hasDeclaringType() }
 
   /** Holds if this declaration is a member of a class/struct/union. */
   predicate hasDeclaringType() { exists(this.getDeclaringType()) }
@@ -226,14 +213,14 @@ class Declaration extends Locatable, @declaration {
    * When called on a template, this will return a template parameter type for
    * both typed and non-typed parameters.
    */
-  final Locatable getATemplateArgument() { result = getTemplateArgument(_) }
+  final Locatable getATemplateArgument() { result = this.getTemplateArgument(_) }
 
   /**
    * Gets a template argument used to instantiate this declaration from a template.
    * When called on a template, this will return a non-typed template
    * parameter value.
    */
-  final Locatable getATemplateArgumentKind() { result = getTemplateArgumentKind(_) }
+  final Locatable getATemplateArgumentKind() { result = this.getTemplateArgumentKind(_) }
 
   /**
    * Gets the `i`th template argument used to instantiate this declaration from a
@@ -248,13 +235,13 @@ class Declaration extends Locatable, @declaration {
    *
    * `Foo<int, 1> bar;`
    *
-   * Will have `getTemplateArgument())` return `int`, and
+   * Will have `getTemplateArgument(0)` return `int`, and
    * `getTemplateArgument(1)` return `1`.
    */
   final Locatable getTemplateArgument(int index) {
-    if exists(getTemplateArgumentValue(index))
-    then result = getTemplateArgumentValue(index)
-    else result = getTemplateArgumentType(index)
+    if exists(this.getTemplateArgumentValue(index))
+    then result = this.getTemplateArgumentValue(index)
+    else result = this.getTemplateArgumentType(index)
   }
 
   /**
@@ -275,14 +262,13 @@ class Declaration extends Locatable, @declaration {
    * `getTemplateArgumentKind(0)`.
    */
   final Locatable getTemplateArgumentKind(int index) {
-    if exists(getTemplateArgumentValue(index))
-    then result = getTemplateArgumentType(index)
-    else none()
+    exists(this.getTemplateArgumentValue(index)) and
+    result = this.getTemplateArgumentType(index)
   }
 
   /** Gets the number of template arguments for this declaration. */
   final int getNumberOfTemplateArguments() {
-    result = count(int i | exists(getTemplateArgument(i)))
+    result = count(int i | exists(this.getTemplateArgument(i)))
   }
 
   private Type getTemplateArgumentType(int index) {
@@ -291,6 +277,10 @@ class Declaration extends Locatable, @declaration {
     function_template_argument(underlyingElement(this), index, unresolveElement(result))
     or
     variable_template_argument(underlyingElement(this), index, unresolveElement(result))
+    or
+    template_template_argument(underlyingElement(this), index, unresolveElement(result))
+    or
+    concept_template_argument(underlyingElement(this), index, unresolveElement(result))
   }
 
   private Expr getTemplateArgumentValue(int index) {
@@ -299,6 +289,10 @@ class Declaration extends Locatable, @declaration {
     function_template_argument_value(underlyingElement(this), index, unresolveElement(result))
     or
     variable_template_argument_value(underlyingElement(this), index, unresolveElement(result))
+    or
+    template_template_argument_value(underlyingElement(this), index, unresolveElement(result))
+    or
+    concept_template_argument_value(underlyingElement(this), index, unresolveElement(result))
   }
 }
 
@@ -328,9 +322,9 @@ class DeclarationEntry extends Locatable, TDeclarationEntry {
    * available), or the name declared by this entry otherwise.
    */
   string getCanonicalName() {
-    if getDeclaration().hasDefinition()
-    then result = getDeclaration().getDefinition().getName()
-    else result = getName()
+    if this.getDeclaration().hasDefinition()
+    then result = this.getDeclaration().getDefinition().getName()
+    else result = this.getName()
   }
 
   /**
@@ -371,18 +365,18 @@ class DeclarationEntry extends Locatable, TDeclarationEntry {
   /**
    * Holds if this declaration entry has a specifier with the given name.
    */
-  predicate hasSpecifier(string specifier) { getASpecifier() = specifier }
+  predicate hasSpecifier(string specifier) { this.getASpecifier() = specifier }
 
   /** Holds if this declaration entry is a definition. */
   predicate isDefinition() { none() } // overridden in subclasses
 
   override string toString() {
-    if isDefinition()
-    then result = "definition of " + getName()
+    if this.isDefinition()
+    then result = "definition of " + this.getName()
     else
-      if getName() = getCanonicalName()
-      then result = "declaration of " + getName()
-      else result = "declaration of " + getCanonicalName() + " as " + getName()
+      if this.getName() = this.getCanonicalName()
+      then result = "declaration of " + this.getName()
+      else result = "declaration of " + this.getCanonicalName() + " as " + this.getName()
   }
 }
 
@@ -491,8 +485,7 @@ class AccessHolder extends Declaration, TAccessHolder {
    */
   pragma[inline]
   predicate canAccessMember(Declaration member, Class derived) {
-    this.couldAccessMember(member.getDeclaringType(), member.getASpecifier().(AccessSpecifier),
-      derived)
+    this.couldAccessMember(member.getDeclaringType(), member.getASpecifier(), derived)
   }
 
   /**
@@ -581,7 +574,7 @@ private class DirectAccessHolder extends Element {
     // transitive closure with a restricted base case.
     this.thisCanAccessClassStep(base, derived)
     or
-    exists(Class between | thisCanAccessClassTrans(base, between) |
+    exists(Class between | this.thisCanAccessClassTrans(base, between) |
       isDirectPublicBaseOf(between, derived) or
       this.thisCanAccessClassStep(between, derived)
     )
@@ -619,11 +612,10 @@ private class DirectAccessHolder extends Element {
   /**
    * Like `couldAccessMember` but only contains derivations in which either
    * (5.2), (5.3) or (5.4) must be invoked. In other words, the `this`
-   * parameter is not ignored. This restriction makes it feasible to fully
-   * enumerate this predicate even on large code bases. We check for 11.4 as
-   * part of (5.3), since this further limits the number of tuples produced by
-   * this predicate.
+   * parameter is not ignored. We check for 11.4 as part of (5.3), since
+   * this further limits the number of tuples produced by this predicate.
    */
+  pragma[inline]
   predicate thisCouldAccessMember(Class memberClass, AccessSpecifier memberAccess, Class derived) {
     // Only (5.4) is recursive, and chains of invocations of (5.4) can always
     // be collapsed to one invocation by the transitivity of 11.2/4.
@@ -665,7 +657,9 @@ private class DirectAccessHolder extends Element {
     //    bypasses `p`. Then that path must be public, or we are in case 2.
     exists(AccessSpecifier public | public.hasName("public") |
       exists(Class between, Class p |
-        between.accessOfBaseMember(memberClass, memberAccess).hasName("protected") and
+        between
+            .accessOfBaseMember(pragma[only_bind_into](memberClass), memberAccess)
+            .hasName("protected") and
         this.isFriendOfOrEqualTo(p) and
         (
           // This is case 1 from above. If `p` derives privately from `between`

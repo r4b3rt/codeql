@@ -38,8 +38,8 @@ class Namespace extends NameQualifyingElement, @namespace {
    * unless the namespace has exactly one declaration entry.
    */
   override Location getLocation() {
-    if strictcount(getADeclarationEntry()) = 1
-    then result = getADeclarationEntry().getLocation()
+    if strictcount(this.getADeclarationEntry()) = 1
+    then result = this.getADeclarationEntry().getLocation()
     else result instanceof UnknownDefaultLocation
   }
 
@@ -50,7 +50,7 @@ class Namespace extends NameQualifyingElement, @namespace {
   predicate hasName(string name) { name = this.getName() }
 
   /** Holds if this namespace is anonymous. */
-  predicate isAnonymous() { hasName("(unnamed namespace)") }
+  predicate isAnonymous() { this.hasName("(unnamed namespace)") }
 
   /** Gets the name of the parent namespace, if it exists. */
   private string getParentName() {
@@ -60,9 +60,9 @@ class Namespace extends NameQualifyingElement, @namespace {
 
   /** Gets the qualified name of this namespace. For example: `a::b`. */
   string getQualifiedName() {
-    if exists(getParentName())
-    then result = getParentNamespace().getQualifiedName() + "::" + getName()
-    else result = getName()
+    if exists(this.getParentName())
+    then result = this.getParentNamespace().getQualifiedName() + "::" + this.getName()
+    else result = this.getName()
   }
 
   /** Gets the parent namespace, if any. */
@@ -86,20 +86,13 @@ class Namespace extends NameQualifyingElement, @namespace {
   /** Holds if this namespace may be from source. */
   override predicate fromSource() { this.getADeclaration().fromSource() }
 
-  /**
-   * Holds if this namespace is in a library.
-   *
-   * DEPRECATED: never holds.
-   */
-  deprecated override predicate fromLibrary() { not this.fromSource() }
-
   /** Gets the metric namespace. */
   MetricNamespace getMetrics() { result = this }
 
   /** Gets a version of the `QualifiedName` that is more suitable for display purposes. */
   string getFriendlyName() { result = this.getQualifiedName() }
 
-  final override string toString() { result = getFriendlyName() }
+  final override string toString() { result = this.getFriendlyName() }
 
   /** Gets a declaration of (part of) this namespace. */
   NamespaceDeclarationEntry getADeclarationEntry() { result.getNamespace() = this }
@@ -163,7 +156,7 @@ class NamespaceDeclarationEntry extends Locatable, @namespace_decl {
  * A C++ `using` directive or `using` declaration.
  */
 class UsingEntry extends Locatable, @using {
-  override Location getLocation() { usings(underlyingElement(this), _, result) }
+  override Location getLocation() { usings(underlyingElement(this), _, result, _) }
 }
 
 /**
@@ -173,15 +166,13 @@ class UsingEntry extends Locatable, @using {
  * ```
  */
 class UsingDeclarationEntry extends UsingEntry {
-  UsingDeclarationEntry() {
-    not exists(Namespace n | usings(underlyingElement(this), unresolveElement(n), _))
-  }
+  UsingDeclarationEntry() { usings(underlyingElement(this), _, _, 1) }
 
   /**
    * Gets the declaration that is referenced by this using declaration. For
    * example, `std::string` in `using std::string`.
    */
-  Declaration getDeclaration() { usings(underlyingElement(this), unresolveElement(result), _) }
+  Declaration getDeclaration() { usings(underlyingElement(this), unresolveElement(result), _, _) }
 
   override string toString() { result = "using " + this.getDeclaration().getDescription() }
 }
@@ -193,17 +184,34 @@ class UsingDeclarationEntry extends UsingEntry {
  * ```
  */
 class UsingDirectiveEntry extends UsingEntry {
-  UsingDirectiveEntry() {
-    exists(Namespace n | usings(underlyingElement(this), unresolveElement(n), _))
-  }
+  UsingDirectiveEntry() { usings(underlyingElement(this), _, _, 2) }
 
   /**
    * Gets the namespace that is referenced by this using directive. For
    * example, `std` in `using namespace std`.
    */
-  Namespace getNamespace() { usings(underlyingElement(this), unresolveElement(result), _) }
+  Namespace getNamespace() { usings(underlyingElement(this), unresolveElement(result), _, _) }
 
   override string toString() { result = "using namespace " + this.getNamespace().getFriendlyName() }
+}
+
+/**
+ * A C++ `using enum` declaration. For example:
+ * ```
+ * enum class Foo { a, b };
+ * using enum Foo;
+ * ```
+ */
+class UsingEnumDeclarationEntry extends UsingEntry {
+  UsingEnumDeclarationEntry() { usings(underlyingElement(this), _, _, 3) }
+
+  /**
+   * Gets the enumeration that is referenced by this using directive. For
+   * example, `Foo` in `using enum Foo`.
+   */
+  Enum getEnum() { usings(underlyingElement(this), unresolveElement(result), _, _) }
+
+  override string toString() { result = "using enum " + this.getEnum().getQualifiedName() }
 }
 
 /**
@@ -233,17 +241,16 @@ class GlobalNamespace extends Namespace {
 
   override Namespace getParentNamespace() { none() }
 
-  /**
-   * DEPRECATED: use `getName()`.
-   */
-  deprecated string getFullName() { result = this.getName() }
-
   override string getFriendlyName() { result = "(global namespace)" }
 }
 
 /**
- * The C++ `std::` namespace.
+ * The C++ `std::` namespace and its inline namespaces.
  */
 class StdNamespace extends Namespace {
-  StdNamespace() { this.hasName("std") and this.getParentNamespace() instanceof GlobalNamespace }
+  StdNamespace() {
+    this.hasName("std") and this.getParentNamespace() instanceof GlobalNamespace
+    or
+    this.isInline() and this.getParentNamespace() instanceof StdNamespace
+  }
 }

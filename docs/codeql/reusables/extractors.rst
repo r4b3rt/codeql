@@ -10,9 +10,13 @@
      - ``csharp``
    * - Go
      - ``go``
-   * - Java 
+   * - Java/Kotlin
      - ``java``
    * - JavaScript/TypeScript
      - ``javascript``
    * - Python
      - ``python``
+   * - Ruby
+     - ``ruby``
+   * - Swift
+     - ``swift``

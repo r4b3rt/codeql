@@ -12,7 +12,7 @@ private import semmle.code.cpp.internal.ResolveClass
 class Specifier extends Element, @specifier {
   /** Gets a dummy location for the specifier. */
   override Location getLocation() {
-    suppressUnusedThis(this) and
+    exists(this) and
     result instanceof UnknownDefaultLocation
   }
 
@@ -31,27 +31,17 @@ class Specifier extends Element, @specifier {
  * A C/C++ function specifier: `inline`, `virtual`, or `explicit`.
  */
 class FunctionSpecifier extends Specifier {
-  FunctionSpecifier() {
-    this.hasName("inline") or
-    this.hasName("virtual") or
-    this.hasName("explicit")
-  }
+  FunctionSpecifier() { this.hasName(["inline", "virtual", "explicit"]) }
 
   override string getAPrimaryQlClass() { result = "FunctionSpecifier" }
 }
 
 /**
  * A C/C++ storage class specifier: `auto`, `register`, `static`, `extern`,
- * or `mutable".
+ * or `mutable`.
  */
 class StorageClassSpecifier extends Specifier {
-  StorageClassSpecifier() {
-    this.hasName("auto") or
-    this.hasName("register") or
-    this.hasName("static") or
-    this.hasName("extern") or
-    this.hasName("mutable")
-  }
+  StorageClassSpecifier() { this.hasName(["auto", "register", "static", "extern", "mutable"]) }
 
   override string getAPrimaryQlClass() { result = "StorageClassSpecifier" }
 }
@@ -60,11 +50,7 @@ class StorageClassSpecifier extends Specifier {
  * A C++ access specifier: `public`, `protected`, or `private`.
  */
 class AccessSpecifier extends Specifier {
-  AccessSpecifier() {
-    this.hasName("public") or
-    this.hasName("protected") or
-    this.hasName("private")
-  }
+  AccessSpecifier() { this.hasName(["public", "protected", "private"]) }
 
   /**
    * Gets the visibility of a field with access specifier `this` if it is
@@ -140,7 +126,7 @@ class Attribute extends Element, @attribute {
   AttributeArgument getArgument(int i) { result.getAttribute() = this and result.getIndex() = i }
 
   /** Gets an argument of the attribute. */
-  AttributeArgument getAnArgument() { result = getArgument(_) }
+  AttributeArgument getAnArgument() { result = this.getArgument(_) }
 }
 
 /**
@@ -166,7 +152,7 @@ class StdAttribute extends Attribute, @stdattribute {
    * Holds if this attribute has the given namespace and name.
    */
   predicate hasQualifiedName(string namespace, string name) {
-    namespace = getNamespace() and hasName(name)
+    namespace = this.getNamespace() and this.hasName(name)
   }
 }
 
@@ -184,7 +170,7 @@ class Declspec extends Attribute, @declspec { }
  */
 class MicrosoftAttribute extends Attribute, @msattribute {
   AttributeArgument getNamedArgument(string name) {
-    result = getAnArgument() and result.getName() = name
+    result = this.getAnArgument() and result.getName() = name
   }
 }
 
@@ -212,13 +198,13 @@ class AlignAs extends Attribute, @alignas {
  * ```
  */
 class FormatAttribute extends GnuAttribute {
-  FormatAttribute() { getName() = "format" }
+  FormatAttribute() { this.getName() = "format" }
 
   /**
    * Gets the archetype of this format attribute, for example
    * `"printf"`.
    */
-  string getArchetype() { result = getArgument(0).getValueText() }
+  string getArchetype() { result = this.getArgument(0).getValueText() }
 
   /**
    * Gets the index in (1-based) format attribute notation associated
@@ -236,7 +222,7 @@ class FormatAttribute extends GnuAttribute {
    * Gets the (0-based) index of the format string,
    * according to this attribute.
    */
-  int getFormatIndex() { result = getArgument(1).getValueInt() - firstArgumentNumber() }
+  int getFormatIndex() { result = this.getArgument(1).getValueInt() - this.firstArgumentNumber() }
 
   /**
    * Gets the (0-based) index of the first format argument (if any),
@@ -244,8 +230,8 @@ class FormatAttribute extends GnuAttribute {
    */
   int getFirstFormatArgIndex() {
     exists(int val |
-      val = getArgument(2).getValueInt() and
-      result = val - firstArgumentNumber() and
+      val = this.getArgument(2).getValueInt() and
+      result = val - this.firstArgumentNumber() and
       not val = 0 // indicates a `vprintf` style format function with arguments not directly available.
     )
   }
@@ -270,19 +256,35 @@ class AttributeArgument extends Element, @attribute_arg {
 
   /**
    * Gets the text for the value of this argument, if its value is
-   * a string or a number.
+   * a constant or a token.
    */
-  string getValueText() { attribute_arg_value(underlyingElement(this), result) }
+  string getValueText() {
+    if underlyingElement(this) instanceof @attribute_arg_constant_expr
+    then result = this.getValueConstant().getValue()
+    else attribute_arg_value(underlyingElement(this), result)
+  }
 
   /**
    * Gets the value of this argument, if its value is integral.
    */
-  int getValueInt() { result = getValueText().toInt() }
+  int getValueInt() { result = this.getValueText().toInt() }
 
   /**
    * Gets the value of this argument, if its value is a type.
    */
   Type getValueType() { attribute_arg_type(underlyingElement(this), unresolveElement(result)) }
+
+  /**
+   * Gets the value of this argument, if its value is a constant.
+   */
+  Expr getValueConstant() {
+    attribute_arg_constant(underlyingElement(this), unresolveElement(result))
+  }
+
+  /**
+   * Gets the value of this argument, if its value is an expression.
+   */
+  Expr getValueExpr() { attribute_arg_expr(underlyingElement(this), unresolveElement(result)) }
 
   /**
    * Gets the attribute to which this is an argument.
@@ -300,19 +302,23 @@ class AttributeArgument extends Element, @attribute_arg {
   override Location getLocation() { attribute_args(underlyingElement(this), _, _, _, result) }
 
   override string toString() {
-    if exists(@attribute_arg_empty self | self = underlyingElement(this))
+    if underlyingElement(this) instanceof @attribute_arg_empty
     then result = "empty argument"
     else
       exists(string prefix, string tail |
-        (if exists(getName()) then prefix = getName() + "=" else prefix = "") and
+        (if exists(this.getName()) then prefix = this.getName() + "=" else prefix = "") and
         (
-          if exists(@attribute_arg_type self | self = underlyingElement(this))
-          then tail = getValueType().getName()
-          else tail = getValueText()
+          if underlyingElement(this) instanceof @attribute_arg_type
+          then tail = this.getValueType().getName()
+          else
+            if underlyingElement(this) instanceof @attribute_arg_constant_expr
+            then tail = this.getValueConstant().toString()
+            else
+              if underlyingElement(this) instanceof @attribute_arg_expr
+              then tail = this.getValueExpr().toString()
+              else tail = this.getValueText()
         ) and
         result = prefix + tail
       )
   }
 }
-
-private predicate suppressUnusedThis(Specifier s) { any() }

@@ -37,21 +37,11 @@ Expr getADelegateExpr(Callable c) {
  */
 predicate nonEscapingCall(Call c) {
   exists(string name | c.getTarget().hasName(name) |
-    name = "ForEach" or
-    name = "Count" or
-    name = "Any" or
-    name = "All" or
-    name = "Average" or
-    name = "Aggregate" or
-    name = "First" or
-    name = "Last" or
-    name = "FirstOrDefault" or
-    name = "LastOrDefault" or
-    name = "LongCount" or
-    name = "Max" or
-    name = "Single" or
-    name = "SingleOrDefault" or
-    name = "Sum"
+    name =
+      [
+        "ForEach", "Count", "Any", "All", "Average", "Aggregate", "First", "Last", "FirstOrDefault",
+        "LastOrDefault", "LongCount", "Max", "Single", "SingleOrDefault", "Sum"
+      ]
   )
 }
 
@@ -101,6 +91,8 @@ class RelevantDefinition extends AssignableDefinition {
       this = any(Ssa::ExplicitDefinition ssaDef).getADefinition()
       or
       mayEscape(v)
+      or
+      v.isCaptured()
     )
   }
 
@@ -116,12 +108,7 @@ class RelevantDefinition extends AssignableDefinition {
   private predicate isDefaultLikeInitializer() {
     this.isInitializer() and
     exists(Expr e | e = this.getSource().stripCasts() |
-      exists(string val | val = e.getValue() |
-        val = "0" or
-        val = "-1" or
-        val = "" or
-        val = "false"
-      )
+      e.getValue() = ["0", "-1", "", "false"]
       or
       e instanceof NullLiteral
       or
@@ -140,7 +127,7 @@ class RelevantDefinition extends AssignableDefinition {
   /** Holds if this definition is dead and we want to report it. */
   predicate isDead() {
     // Ensure that the definition is not in dead code
-    exists(this.getAControlFlowNode()) and
+    exists(this.getExpr().getAControlFlowNode()) and
     not this.isMaybeLive() and
     // Allow dead initializer assignments, such as `string s = string.Empty`, but only
     // if the initializer expression assigns a default-like value, and there exists another

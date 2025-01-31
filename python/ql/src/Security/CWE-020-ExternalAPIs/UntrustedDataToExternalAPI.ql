@@ -1,7 +1,7 @@
 /**
  * @name Untrusted data passed to external API
  * @description Data provided remotely is used in this external API without sanitization, which could be a security risk.
- * @id python/untrusted-data-to-external-api
+ * @id py/untrusted-data-to-external-api
  * @kind path-problem
  * @precision low
  * @problem.severity error
@@ -11,14 +11,14 @@
 
 import python
 import ExternalAPIs
-import DataFlow::PathGraph
+import UntrustedDataToExternalApiFlow::PathGraph
 
 from
-  UntrustedDataToExternalAPIConfig config, DataFlow::PathNode source, DataFlow::PathNode sink,
-  ExternalAPIUsedWithUntrustedData externalAPI
+  UntrustedDataToExternalApiFlow::PathNode source, UntrustedDataToExternalApiFlow::PathNode sink,
+  ExternalApiUsedWithUntrustedData externalApi
 where
-  sink.getNode() = externalAPI.getUntrustedDataNode() and
-  config.hasFlowPath(source, sink)
+  sink.getNode() = externalApi.getUntrustedDataNode() and
+  UntrustedDataToExternalApiFlow::flowPath(source, sink)
 select sink.getNode(), source, sink,
-  "Call to " + externalAPI.toString() + " with untrusted data from $@.", source.getNode(),
+  "Call to " + externalApi.toString() + " with untrusted data from $@.", source.getNode(),
   source.toString()

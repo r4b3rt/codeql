@@ -1,5 +1,5 @@
 import cpp
-import semmle.code.cpp.dataflow.DataFlow
+import semmle.code.cpp.ir.dataflow.DataFlow
 import semmle.code.cpp.controlflow.Guards
 import semmle.code.cpp.valuenumbering.GlobalValueNumbering
 
@@ -61,90 +61,80 @@ class PointerArithmeticAccess extends BufferAccess, Expr {
  * A pair of buffer accesses through a call to memcpy.
  */
 class MemCpy extends BufferAccess, FunctionCall {
-  MemCpy() { getTarget().hasName("memcpy") }
+  MemCpy() { this.getTarget().hasName("memcpy") }
 
   override Expr getPointer() {
-    result = getArgument(0) or
-    result = getArgument(1)
+    result = this.getArgument(0) or
+    result = this.getArgument(1)
   }
 
-  override Expr getAccessedLength() { result = getArgument(2) }
+  override Expr getAccessedLength() { result = this.getArgument(2) }
 }
 
 class StrncpySizeExpr extends BufferAccess, FunctionCall {
-  StrncpySizeExpr() { getTarget().hasName("strncpy") }
+  StrncpySizeExpr() { this.getTarget().hasName("strncpy") }
 
   override Expr getPointer() {
-    result = getArgument(0) or
-    result = getArgument(1)
+    result = this.getArgument(0) or
+    result = this.getArgument(1)
   }
 
-  override Expr getAccessedLength() { result = getArgument(2) }
+  override Expr getAccessedLength() { result = this.getArgument(2) }
 }
 
 class RecvSizeExpr extends BufferAccess, FunctionCall {
-  RecvSizeExpr() { getTarget().hasName("recv") }
+  RecvSizeExpr() { this.getTarget().hasName("recv") }
 
-  override Expr getPointer() { result = getArgument(1) }
+  override Expr getPointer() { result = this.getArgument(1) }
 
-  override Expr getAccessedLength() { result = getArgument(2) }
+  override Expr getAccessedLength() { result = this.getArgument(2) }
 }
 
 class SendSizeExpr extends BufferAccess, FunctionCall {
-  SendSizeExpr() { getTarget().hasName("send") }
+  SendSizeExpr() { this.getTarget().hasName("send") }
 
-  override Expr getPointer() { result = getArgument(1) }
+  override Expr getPointer() { result = this.getArgument(1) }
 
-  override Expr getAccessedLength() { result = getArgument(2) }
+  override Expr getAccessedLength() { result = this.getArgument(2) }
 }
 
 class SnprintfSizeExpr extends BufferAccess, FunctionCall {
-  SnprintfSizeExpr() { getTarget().hasName("snprintf") }
+  SnprintfSizeExpr() { this.getTarget().hasName("snprintf") }
 
-  override Expr getPointer() { result = getArgument(0) }
+  override Expr getPointer() { result = this.getArgument(0) }
 
-  override Expr getAccessedLength() { result = getArgument(1) }
+  override Expr getAccessedLength() { result = this.getArgument(1) }
 }
 
 class MemcmpSizeExpr extends BufferAccess, FunctionCall {
-  MemcmpSizeExpr() { getTarget().hasName("Memcmp") }
+  MemcmpSizeExpr() { this.getTarget().hasName("memcmp") }
 
   override Expr getPointer() {
-    result = getArgument(0) or
-    result = getArgument(1)
+    result = this.getArgument(0) or
+    result = this.getArgument(1)
   }
 
-  override Expr getAccessedLength() { result = getArgument(2) }
+  override Expr getAccessedLength() { result = this.getArgument(2) }
 }
 
 class MallocSizeExpr extends BufferAccess, FunctionCall {
-  MallocSizeExpr() { getTarget().hasName("malloc") }
+  MallocSizeExpr() { this.getTarget().hasName("malloc") }
 
   override Expr getPointer() { none() }
 
-  override Expr getAccessedLength() { result = getArgument(0) }
+  override Expr getAccessedLength() { result = this.getArgument(0) }
 }
 
 class NetworkFunctionCall extends FunctionCall {
-  NetworkFunctionCall() {
-    getTarget().hasName("ntohd") or
-    getTarget().hasName("ntohf") or
-    getTarget().hasName("ntohl") or
-    getTarget().hasName("ntohll") or
-    getTarget().hasName("ntohs")
-  }
+  NetworkFunctionCall() { this.getTarget().hasName(["ntohd", "ntohf", "ntohl", "ntohll", "ntohs"]) }
 }
 
-class NetworkToBufferSizeConfiguration extends DataFlow::Configuration {
-  NetworkToBufferSizeConfiguration() { this = "NetworkToBufferSizeConfiguration" }
+private module NetworkToBufferSizeConfig implements DataFlow::ConfigSig {
+  predicate isSource(DataFlow::Node node) { node.asExpr() instanceof NetworkFunctionCall }
 
-  override predicate isSource(DataFlow::Node node) { node.asExpr() instanceof NetworkFunctionCall }
+  predicate isSink(DataFlow::Node node) { node.asExpr() = any(BufferAccess ba).getAccessedLength() }
 
-  override predicate isSink(DataFlow::Node node) {
-    node.asExpr() = any(BufferAccess ba).getAccessedLength()
-  }
-
-  override predicate isBarrier(DataFlow::Node node) {
+  predicate isBarrier(DataFlow::Node node) {
     exists(GuardCondition gc, GVN gvn |
       gc.getAChild*() = gvn.getAnExpr() and
       globalValueNumber(node.asExpr()) = gvn and
@@ -152,3 +142,5 @@ class NetworkToBufferSizeConfiguration extends DataFlow::Configuration {
     )
   }
 }
+
+module NetworkToBufferSizeFlow = DataFlow::Global<NetworkToBufferSizeConfig>;

@@ -58,15 +58,7 @@ predicate intTrivial(Literal lit) { exists(string v | trivialIntValue(v) and v =
 predicate longTrivial(Literal lit) { exists(string v | trivialLongValue(v) and v = lit.getValue()) }
 
 predicate powerOfTen(float f) {
-  f = 10 or
-  f = 100 or
-  f = 1000 or
-  f = 10000 or
-  f = 100000 or
-  f = 1000000 or
-  f = 10000000 or
-  f = 100000000 or
-  f = 1000000000
+  f = [10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000]
 }
 
 predicate floatTrivial(Literal lit) {
@@ -79,18 +71,6 @@ predicate floatTrivial(Literal lit) {
 }
 
 predicate charLiteral(Literal lit) { lit instanceof CharLiteral }
-
-Type literalType(Literal literal) { result = literal.getType() }
-
-predicate stringType(DerivedType t) {
-  t.getBaseType() instanceof CharType
-  or
-  exists(SpecifiedType constCharType |
-    t.getBaseType() = constCharType and
-    constCharType.isConst() and
-    constCharType.getBaseType() instanceof CharType
-  )
-}
 
 predicate numberType(Type t) { t instanceof FloatingPointType or t instanceof IntegralType }
 
@@ -149,9 +129,7 @@ predicate literalIsEnumInitializer(Literal literal) {
   exists(EnumConstant ec | ec.getInitializer().getExpr() = literal)
 }
 
-predicate literalInArrayInitializer(Literal literal) {
-  exists(AggregateLiteral arrayInit | arrayInitializerChild(arrayInit, literal))
-}
+predicate literalInArrayInitializer(Literal literal) { arrayInitializerChild(_, literal) }
 
 predicate arrayInitializerChild(AggregateLiteral parent, Expr e) {
   e = parent

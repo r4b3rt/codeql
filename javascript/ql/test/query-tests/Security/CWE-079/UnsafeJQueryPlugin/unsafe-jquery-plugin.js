@@ -182,4 +182,24 @@
 		$(document).find(options.target); // OK
 	}});
 
+	$.fn.position = function( options ) {
+		if ( !options || !options.of ) {
+			return doSomethingElse( this, arguments );
+		}
+		// extending options
+		options = $.extend( {}, options );
+
+		var target = $( options.of ); // NOT OK
+		console.log(target);
+	};
+
+	$.fn.blockReceiver = function( options ) {
+		$.extend({
+				foo() {
+					$(this); // OK
+				}
+			},
+			options,
+		);
+	};
 });

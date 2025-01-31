@@ -9,14 +9,15 @@
  * @tags security
  *       external/cwe/cwe-346
  *       external/cwe/cwe-639
+ *       external/cwe/cwe-942
  */
 
 import javascript
 import semmle.javascript.security.dataflow.CorsMisconfigurationForCredentialsQuery
-import DataFlow::PathGraph
+import CorsMisconfigurationFlow::PathGraph
 
-from Configuration cfg, DataFlow::PathNode source, DataFlow::PathNode sink
-where cfg.hasFlowPath(source, sink)
-select sink.getNode(), source, sink, "$@ leak vulnerability due to $@.",
+from CorsMisconfigurationFlow::PathNode source, CorsMisconfigurationFlow::PathNode sink
+where CorsMisconfigurationFlow::flowPath(source, sink)
+select sink.getNode(), source, sink, "$@ leak vulnerability due to a $@.",
   sink.getNode().(Sink).getCredentialsHeader(), "Credential", source.getNode(),
-  "a misconfigured CORS header value"
+  "misconfigured CORS header value"

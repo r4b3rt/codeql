@@ -5,8 +5,6 @@
 import Member
 import Stmt
 import Type
-private import cil
-private import dotnet
 private import semmle.code.csharp.ExprOrStmtParent
 private import TypeRef
 
@@ -15,7 +13,8 @@ private import TypeRef
  * (`Property`), or an indexer (`Indexer`).
  */
 class DeclarationWithAccessors extends AssignableMember, Virtualizable, Attributable,
-  @declaration_with_accessors {
+  @declaration_with_accessors
+{
   /** Gets an accessor of this declaration. */
   Accessor getAnAccessor() { result.getDeclaration() = this }
 
@@ -42,8 +41,6 @@ class DeclarationWithAccessors extends AssignableMember, Virtualizable, Attribut
   }
 
   override Type getType() { none() }
-
-  override string toString() { result = AssignableMember.super.toString() }
 }
 
 /**
@@ -51,12 +48,13 @@ class DeclarationWithAccessors extends AssignableMember, Virtualizable, Attribut
  * property (`Property`) or an indexer (`Indexer`).
  */
 class DeclarationWithGetSetAccessors extends DeclarationWithAccessors, TopLevelExprParent,
-  @assignable_with_accessors {
+  @assignable_with_accessors
+{
   /** Gets the `get` accessor of this declaration, if any. */
-  Getter getGetter() { result = getAnAccessor() }
+  Getter getGetter() { result = this.getAnAccessor() }
 
   /** Gets the `set` accessor of this declaration, if any. */
-  Setter getSetter() { result = getAnAccessor() }
+  Setter getSetter() { result = this.getAnAccessor() }
 
   override DeclarationWithGetSetAccessors getOverridee() {
     result = DeclarationWithAccessors.super.getOverridee()
@@ -113,14 +111,26 @@ class DeclarationWithGetSetAccessors extends DeclarationWithAccessors, TopLevelE
  * }
  * ```
  */
-class Property extends DotNet::Property, DeclarationWithGetSetAccessors, @property {
+class Property extends DeclarationWithGetSetAccessors, @property {
   override string getName() { properties(this, result, _, _, _) }
 
   override string getUndecoratedName() { properties(this, result, _, _, _) }
 
   override ValueOrRefType getDeclaringType() { properties(this, _, result, _, _) }
 
-  override Type getType() { properties(this, _, _, getTypeRef(result), _) }
+  override Type getType() {
+    properties(this, _, _, result, _)
+    or
+    not properties(this, _, _, any(Type t), _) and
+    properties(this, _, _, getTypeRef(result), _)
+  }
+
+  private predicate isAutoPartial() {
+    this.fromSource() and
+    not this.isExtern() and
+    not this.isAbstract() and
+    not this.getAnAccessor().hasBody()
+  }
 
   /**
    * Holds if this property is automatically implemented. For example, `P1`
@@ -138,15 +148,26 @@ class Property extends DotNet::Property, DeclarationWithGetSetAccessors, @proper
    * }
    * ```
    *
-   * Note that this information is only avaiable for properties in source
+   * Note that this information is only available for properties in source
    * code.
    */
   predicate isAutoImplemented() {
-    this.fromSource() and
-    this.isReadWrite() and
-    not this.isExtern() and
-    not this.isAbstract() and
-    not this.getAnAccessor().hasBody()
+    this.isAutoPartial() and
+    this.isReadWrite()
+  }
+
+  /**
+   * Holds if this property is automatically implemented and read-only. For
+   * example, `P1` on line 2 is automatically implemented and read-only
+   * ```csharp
+   * class C {
+   *   public int P1 { get; }
+   * }
+   * ```
+   */
+  predicate isAutoImplementedReadOnly() {
+    this.isAutoPartial() and
+    this.isReadOnly()
   }
 
   override Property getUnboundDeclaration() { properties(this, _, _, _, result) }
@@ -182,10 +203,10 @@ class Property extends DotNet::Property, DeclarationWithGetSetAccessors, @proper
     or
     // For library types, we don't know about assignments in constructors. We instead assume that
     // arguments passed to parameters of constructors with suitable names.
-    getDeclaringType().fromLibrary() and
+    this.getDeclaringType().fromLibrary() and
     exists(Parameter param, Constructor c, string propertyName |
-      propertyName = getName() and
-      c = getDeclaringType().getAConstructor() and
+      propertyName = this.getName() and
+      c = this.getDeclaringType().getAConstructor() and
       param = c.getAParameter() and
       // Find a constructor parameter with the same name, but with a lower case initial letter.
       param.hasName(propertyName.charAt(0).toLowerCase() + propertyName.suffix(1))
@@ -256,11 +277,16 @@ class Indexer extends DeclarationWithGetSetAccessors, Parameterizable, @indexer 
   override string getUndecoratedName() { indexers(this, result, _, _, _) }
 
   /** Gets the dimension of this indexer, that is, its number of parameters. */
-  int getDimension() { result = getNumberOfParameters() }
+  int getDimension() { result = this.getNumberOfParameters() }
 
   override ValueOrRefType getDeclaringType() { indexers(this, _, result, _, _) }
 
-  override Type getType() { indexers(this, _, _, getTypeRef(result), _) }
+  override Type getType() {
+    indexers(this, _, _, result, _)
+    or
+    not indexers(this, _, _, any(Type t), _) and
+    indexers(this, _, _, getTypeRef(result), _)
+  }
 
   override IndexerAccess getAnAccess() { result.getTarget() = this }
 
@@ -304,7 +330,9 @@ class Indexer extends DeclarationWithGetSetAccessors, Parameterizable, @indexer 
 
   override Location getALocation() { indexer_location(this, result) }
 
-  override string toStringWithTypes() { result = getName() + "[" + parameterTypesToString() + "]" }
+  override string toStringWithTypes() {
+    result = this.getName() + "[" + this.parameterTypesToString() + "]"
+  }
 
   override string getAPrimaryQlClass() { result = "Indexer" }
 }
@@ -313,7 +341,7 @@ class Indexer extends DeclarationWithGetSetAccessors, Parameterizable, @indexer 
  * An accessor. Either a getter (`Getter`), a setter (`Setter`), or event
  * accessor (`EventAccessor`).
  */
-class Accessor extends Callable, Modifiable, Attributable, @callable_accessor {
+class Accessor extends Callable, Modifiable, Attributable, Overridable, @callable_accessor {
   override ValueOrRefType getDeclaringType() { result = this.getDeclaration().getDeclaringType() }
 
   /** Gets the assembly name of this accessor. */
@@ -368,17 +396,21 @@ class Accessor extends Callable, Modifiable, Attributable, @callable_accessor {
    * ```
    */
   override Modifier getAModifier() {
-    result = getAnAccessModifier()
+    result = this.getAnAccessModifier()
     or
-    result = getDeclaration().getAModifier() and
-    not (result instanceof AccessModifier and exists(getAnAccessModifier()))
+    result = this.getDeclaration().getAModifier() and
+    not (result instanceof AccessModifier and exists(this.getAnAccessModifier()))
+  }
+
+  override predicate isOverridableOrImplementable() {
+    this.getDeclaration().isOverridableOrImplementable()
   }
 
   override Accessor getUnboundDeclaration() { accessors(this, _, _, _, result) }
 
   override Location getALocation() { accessor_location(this, result) }
 
-  override string toString() { result = getName() }
+  override string toString() { result = this.getName() }
 }
 
 /**
@@ -395,11 +427,11 @@ class Accessor extends Callable, Modifiable, Attributable, @callable_accessor {
  * ```
  */
 class Getter extends Accessor, @getter {
-  override string getName() { result = "get" + "_" + getDeclaration().getName() }
+  override string getName() { result = "get" + "_" + this.getDeclaration().getName() }
 
-  override string getUndecoratedName() { result = "get" + "_" + getDeclaration().getName() }
+  override string getUndecoratedName() { result = "get" + "_" + this.getDeclaration().getName() }
 
-  override Type getReturnType() { result = getDeclaration().getType() }
+  override Type getReturnType() { result = this.getDeclaration().getType() }
 
   /**
    * Gets the field used in the trival implementation of this getter, if any.
@@ -417,8 +449,8 @@ class Getter extends Accessor, @getter {
    */
   Field trivialGetterField() {
     exists(ReturnStmt ret |
-      getStatementBody().getNumberOfStmts() = 1 and
-      getStatementBody().getAChild() = ret and
+      this.getStatementBody().getNumberOfStmts() = 1 and
+      this.getStatementBody().getAChild() = ret and
       ret.getExpr() = result.getAnAccess()
     )
   }
@@ -444,9 +476,9 @@ class Getter extends Accessor, @getter {
  * ```
  */
 class Setter extends Accessor, @setter {
-  override string getName() { result = "set" + "_" + getDeclaration().getName() }
+  override string getName() { result = "set" + "_" + this.getDeclaration().getName() }
 
-  override string getUndecoratedName() { result = "set" + "_" + getDeclaration().getName() }
+  override string getUndecoratedName() { result = "set" + "_" + this.getDeclaration().getName() }
 
   override Type getReturnType() {
     exists(this) and // needed to avoid compiler warning
@@ -469,8 +501,8 @@ class Setter extends Accessor, @setter {
    */
   Field trivialSetterField() {
     exists(AssignExpr assign |
-      getStatementBody().getNumberOfStmts() = 1 and
-      assign.getParent() = getStatementBody().getAChild() and
+      this.getStatementBody().getNumberOfStmts() = 1 and
+      assign.getParent() = this.getStatementBody().getAChild() and
       assign.getLValue() = result.getAnAccess() and
       assign.getRValue() = accessToValue()
     )
@@ -521,11 +553,9 @@ private ParameterAccess accessToValue() {
  */
 class TrivialProperty extends Property {
   TrivialProperty() {
-    isAutoImplemented()
+    this.isAutoImplemented()
     or
-    getGetter().trivialGetterField() = getSetter().trivialSetterField()
-    or
-    exists(CIL::TrivialProperty prop | this.matchesHandle(prop))
+    this.getGetter().trivialGetterField() = this.getSetter().trivialSetterField()
   }
 }
 

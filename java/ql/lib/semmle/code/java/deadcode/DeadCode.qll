@@ -3,6 +3,7 @@ import semmle.code.java.deadcode.DeadEnumConstant
 import semmle.code.java.deadcode.DeadCodeCustomizations
 import semmle.code.java.deadcode.DeadField
 import semmle.code.java.deadcode.EntryPoints
+private import semmle.code.java.frameworks.kotlin.Serialization
 
 /**
  * Holds if the given callable has any liveness causes.
@@ -18,12 +19,12 @@ predicate isLive(Callable c) {
  * would imply the liveness of `c`.
  */
 Callable possibleLivenessCause(Callable c, string reason) {
-  c.(Method).overridesOrInstantiates(result.(Method)) and
+  c.(Method).overridesOrInstantiates(result) and
   reason = "is overridden or instantiated by"
   or
   result.calls(c) and reason = "calls"
   or
-  result.callsConstructor(c.(Constructor)) and reason = "calls constructor"
+  result.callsConstructor(c) and reason = "calls constructor"
   or
   exists(ClassInstanceExpr e | e.getEnclosingCallable() = result |
     e.getConstructor() = c and reason = "constructs"
@@ -33,7 +34,7 @@ Callable possibleLivenessCause(Callable c, string reason) {
   or
   c.hasName("<clinit>") and
   reason = "class initialization" and
-  exists(RefType clintedType | c = clintedType.getASupertype*().getACallable() |
+  exists(RefType clintedType | c = clintedType.getAnAncestor().getACallable() |
     result.getDeclaringType() = clintedType or
     result.getAnAccessedField().getDeclaringType() = clintedType
   )
@@ -82,19 +83,19 @@ class SuppressedConstructor extends Constructor {
   SuppressedConstructor() {
     // Must be private or protected to suppress it.
     (
-      isPrivate()
+      this.isPrivate()
       or
       // A protected, suppressed constructor only makes sense in a non-abstract class.
-      isProtected() and not getDeclaringType().isAbstract()
+      this.isProtected() and not this.getDeclaringType().isAbstract()
     ) and
     // Must be no-arg in order to replace the compiler generated default constructor.
-    getNumberOfParameters() = 0 and
+    this.getNumberOfParameters() = 0 and
     // Not the compiler-generated constructor itself.
-    not isDefaultConstructor() and
+    not this.isDefaultConstructor() and
     // Verify that there is only one statement, which is the `super()` call. This exists
     // even for empty constructors.
-    getBody().(BlockStmt).getNumStmt() = 1 and
-    getBody().(BlockStmt).getAStmt().(SuperConstructorInvocationStmt).getNumArgument() = 0 and
+    this.getBody().getNumStmt() = 1 and
+    this.getBody().getAStmt().(SuperConstructorInvocationStmt).getNumArgument() = 0 and
     // A constructor that is called is not acting to suppress the default constructor. We permit
     // calls from suppressed and default constructors - in both cases, they can only come from
     // sub-class constructors.
@@ -105,7 +106,9 @@ class SuppressedConstructor extends Constructor {
     ) and
     // If other constructors are declared, then no compiler-generated constructor is added, so
     // this constructor is not acting to suppress the default compiler-generated constructor.
-    not exists(Constructor other | other = getDeclaringType().getAConstructor() and other != this)
+    not exists(Constructor other |
+      other = this.getDeclaringType().getAConstructor() and other != this
+    )
   }
 }
 
@@ -114,7 +117,7 @@ class SuppressedConstructor extends Constructor {
  */
 class NamespaceClass extends RefType {
   NamespaceClass() {
-    fromSource() and
+    this.fromSource() and
     // All members, apart from the default constructor and, if present, a "suppressed" constructor
     // must be static. There must be at least one member apart from the permitted constructors.
     forex(Member m |
@@ -125,7 +128,9 @@ class NamespaceClass extends RefType {
       m.isStatic()
     ) and
     // Must only extend other namespace classes, or `Object`.
-    forall(RefType r | r = getASupertype() | r instanceof TypeObject or r instanceof NamespaceClass)
+    forall(RefType r | r = this.getASupertype() |
+      r instanceof TypeObject or r instanceof NamespaceClass
+    )
   }
 }
 
@@ -135,7 +140,7 @@ class NamespaceClass extends RefType {
  * This represents the set of classes and interfaces for which we will determine liveness. Each
  * `SourceClassOrInterfacce` will either be a `LiveClass` or `DeadClass`.
  */
-library class SourceClassOrInterface extends ClassOrInterface {
+class SourceClassOrInterface extends ClassOrInterface {
   SourceClassOrInterface() { this.fromSource() }
 }
 
@@ -151,14 +156,14 @@ library class SourceClassOrInterface extends ClassOrInterface {
  */
 class LiveClass extends SourceClassOrInterface {
   LiveClass() {
-    exists(Callable c | c.getDeclaringType().getASupertype*().getSourceDeclaration() = this |
+    exists(Callable c | c.getDeclaringType().getAnAncestor().getSourceDeclaration() = this |
       isLive(c)
     )
     or
     exists(LiveField f | f.getDeclaringType() = this |
       // A `serialVersionUID` field is considered to be a live field, but is
       // not be enough to be make this class live.
-      not f instanceof SerialVersionUIDField
+      not f instanceof SerialVersionUidField
     )
     or
     // If this is a namespace class, it is live if there is at least one live nested class.
@@ -168,9 +173,9 @@ class LiveClass extends SourceClassOrInterface {
     exists(NestedType r | r.getEnclosingType() = this | r instanceof LiveClass)
     or
     // An annotation on the class is reflectively accessed.
-    exists(ReflectiveAnnotationAccess reflectiveAnnotationAccess |
-      this = reflectiveAnnotationAccess.getInferredClassType() and
-      isLive(reflectiveAnnotationAccess.getEnclosingCallable())
+    exists(ReflectiveGetAnnotationCall reflectiveAnnotationCall |
+      this = reflectiveAnnotationCall.getInferredClassType() and
+      isLive(reflectiveAnnotationCall.getEnclosingCallable())
     )
     or
     this instanceof AnonymousClass
@@ -197,7 +202,7 @@ class DeadClass extends SourceClassOrInterface {
   /**
    * Identify all the "dead" roots of this dead class.
    */
-  DeadRoot getADeadRoot() { result = getADeadRoot(getACallable()) }
+  DeadRoot getADeadRoot() { result = getADeadRoot(this.getACallable()) }
 
   /**
    * Holds if this dead class is only used within the class itself.
@@ -206,8 +211,8 @@ class DeadClass extends SourceClassOrInterface {
     // Accessed externally if any callable in the class has a possible liveness cause outside the
     // class. Only one step is required.
     not exists(Callable c |
-      c = possibleLivenessCause(getACallable()) and
-      not c = getACallable()
+      c = possibleLivenessCause(this.getACallable()) and
+      not c = this.getACallable()
     )
   }
 }
@@ -229,7 +234,7 @@ abstract class WhitelistedLiveClass extends RefType { }
  */
 class DeadMethod extends Callable {
   DeadMethod() {
-    fromSource() and
+    this.fromSource() and
     not isLive(this) and
     not this.(Constructor).isDefaultConstructor() and
     // Ignore `SuppressedConstructor`s in `NamespaceClass`es. There is no reason to use a suppressed
@@ -239,14 +244,14 @@ class DeadMethod extends Callable {
     ) and
     not (
       this.(Method).isAbstract() and
-      exists(Method m | m.overridesOrInstantiates+(this.(Method)) | isLive(m))
+      exists(Method m | m.overridesOrInstantiates+(this) | isLive(m))
     ) and
     // A getter or setter associated with a live JPA field.
     //
     // These getters and setters are often generated in an ad-hoc way by the developer, which leads to
     // methods that are theoretically dead, but uninteresting. We therefore ignore them, so long as
     // they are "simple".
-    not exists(JPAReadField readField | this.getDeclaringType() = readField.getDeclaringType() |
+    not exists(JpaReadField readField | this.getDeclaringType() = readField.getDeclaringType() |
       this.(GetterMethod).getField() = readField or
       this.(SetterMethod).getField() = readField
     )
@@ -269,14 +274,19 @@ class DeadMethod extends Callable {
 
 class RootdefCallable extends Callable {
   RootdefCallable() {
-    this.fromSource() and
+    this.getFile().isJavaSourceFile() and
     not this.(Method).overridesOrInstantiates(_)
   }
 
   Parameter unusedParameter() {
     exists(int i | result = this.getParameter(i) |
       not exists(result.getAnAccess()) and
-      not overrideAccess(this, i)
+      not overrideAccess(this, i) and
+      // Do not report unused parameters on extension parameters that are (companion) objects.
+      not (
+        result.isExtensionParameter() and
+        (result.getType() instanceof CompanionObject or result.getType() instanceof ClassObject)
+      )
     )
   }
 
@@ -298,6 +308,14 @@ class RootdefCallable extends Callable {
     exists(MemberRefExpr mre | mre.getReferencedCallable() = this)
     or
     this.getAnAnnotation() instanceof OverrideAnnotation
+    or
+    this.hasModifier("override")
+    or
+    // Exclude generated callables, such as `...$default` ones extracted from Kotlin code.
+    this.isCompilerGenerated()
+    or
+    // Exclude Kotlin serialization constructors.
+    this instanceof SerializationConstructor
   }
 }
 

@@ -17,10 +17,11 @@ import java
  * since package-protected fields are not inherited by classes in different
  * packages, but it's enough for the purposes of this check.
  */
+pragma[nomagic]
 predicate inherits(Class c, Field f) {
   f = c.getAField()
   or
-  not f.isPrivate() and c.getASupertype+().getAField() = f
+  not f.isPrivate() and c.getAStrictAncestor().getAField() = f
 }
 
 /**
@@ -73,11 +74,11 @@ RefType enclosingInstanceAccess(Expr expr) {
       not inherits(enclosing, fa.getVariable())
     )
     or
-    exists(MethodAccess ma | ma = expr |
+    exists(MethodCall ma | ma = expr |
       result = ma.getMethod().getDeclaringType() and
       not exists(ma.getQualifier()) and
       not ma.getMethod().isStatic() and
-      not exists(Method m | m.getSourceDeclaration() = ma.getMethod() | enclosing.inherits(m))
+      not enclosing.inherits(ma.getMethod())
     )
   )
 }
@@ -129,7 +130,9 @@ predicate potentiallyStatic(InnerClass c) {
     )
   ) and
   // JUnit Nested test classes are required to be non-static.
-  not c.hasAnnotation("org.junit.jupiter.api", "Nested")
+  not c.hasAnnotation("org.junit.jupiter.api", "Nested") and
+  // There's no `static` in kotlin:
+  not c.getLocation().getFile().isKotlinSourceFile()
 }
 
 /**

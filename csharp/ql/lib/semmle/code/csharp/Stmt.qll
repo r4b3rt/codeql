@@ -43,6 +43,9 @@ class Stmt extends ControlFlowElement, @stmt {
    * For example converts `{ { return x; } }` to `return x;`.
    */
   Stmt stripSingletonBlocks() { result = this }
+
+  /** Holds if this statement is compiler generated. */
+  predicate isCompilerGenerated() { compiler_generated(this) }
 }
 
 /**
@@ -65,22 +68,22 @@ class BlockStmt extends Stmt, @block_stmt {
   int getNumberOfStmts() { result = count(this.getAStmt()) }
 
   /** Gets the first statement in this block, if any. */
-  Stmt getFirstStmt() { result = getStmt(0) }
+  Stmt getFirstStmt() { result = this.getStmt(0) }
 
   /** Gets the last statement in this block, if any. */
-  Stmt getLastStmt() { result = getStmt(getNumberOfStmts() - 1) }
+  Stmt getLastStmt() { result = this.getStmt(this.getNumberOfStmts() - 1) }
 
   /** Holds if this block is an empty block with no statements. */
   predicate isEmpty() { not exists(this.getAStmt()) }
 
   /** Holds if this block is the container of the global statements. */
   predicate isGlobalStatementContainer() {
-    this.getEnclosingCallable().hasQualifiedName("<Program>$.<Main>$")
+    this.getEnclosingCallable().hasFullyQualifiedName("Program", "<Main>$")
   }
 
   override Stmt stripSingletonBlocks() {
-    if getNumberOfStmts() = 1
-    then result = getAChildStmt().stripSingletonBlocks()
+    if this.getNumberOfStmts() = 1
+    then result = this.getAChildStmt().stripSingletonBlocks()
     else result = this
   }
 
@@ -420,7 +423,7 @@ class ForStmt extends LoopStmt, @for_stmt {
    * }
    * ```
    */
-  Expr getAnInitializer() { result = getInitializer(_) }
+  Expr getAnInitializer() { result = this.getInitializer(_) }
 
   /**
    * Gets the `n`th initializer expression of this `for` loop
@@ -451,7 +454,7 @@ class ForStmt extends LoopStmt, @for_stmt {
    * }
    * ```
    */
-  Expr getAnUpdate() { result = getUpdate(_) }
+  Expr getAnUpdate() { result = this.getUpdate(_) }
 
   /**
    * Gets the `n`th update expression of this `for` loop (starting at index 0).
@@ -519,7 +522,7 @@ class ForeachStmt extends LoopStmt, @foreach_stmt {
    * ```
    */
   LocalVariableDeclExpr getVariableDeclExpr(int i) {
-    result = getVariableDeclTuple().getArgument(i)
+    result = this.getVariableDeclTuple().getArgument(i)
     or
     i = 0 and result = this.getChild(0)
   }
@@ -547,7 +550,7 @@ class ForeachStmt extends LoopStmt, @foreach_stmt {
    * }
    * ```
    */
-  LocalVariable getVariable(int i) { result = getVariableDeclExpr(i).getVariable() }
+  LocalVariable getVariable(int i) { result = this.getVariableDeclExpr(i).getVariable() }
 
   /**
    * Gets a local variable of this `foreach` loop.
@@ -560,7 +563,7 @@ class ForeachStmt extends LoopStmt, @foreach_stmt {
    * }
    * ```
    */
-  LocalVariable getAVariable() { result = getVariable(_) }
+  LocalVariable getAVariable() { result = this.getVariable(_) }
 
   /**
    * Gets a local variable declaration of this `foreach` loop.
@@ -573,7 +576,7 @@ class ForeachStmt extends LoopStmt, @foreach_stmt {
    * }
    * ```
    */
-  LocalVariableDeclExpr getAVariableDeclExpr() { result = getVariableDeclExpr(_) }
+  LocalVariableDeclExpr getAVariableDeclExpr() { result = this.getVariableDeclExpr(_) }
 
   override Expr getCondition() { none() }
 
@@ -690,8 +693,8 @@ class GotoLabelStmt extends GotoStmt, @goto_stmt {
 
   /** Gets the target statement that this `goto` statement jumps to. */
   LabeledStmt getTarget() {
-    result.getEnclosingCallable() = getEnclosingCallable() and
-    result.getLabel() = getLabel()
+    result.getEnclosingCallable() = this.getEnclosingCallable() and
+    result.getLabel() = this.getLabel()
   }
 
   override string getAPrimaryQlClass() { result = "GotoLabelStmt" }
@@ -717,7 +720,7 @@ class GotoCaseStmt extends GotoStmt, @goto_case_stmt {
   /** Gets the constant expression that this `goto case` statement jumps to. */
   Expr getExpr() { result = this.getChild(0) }
 
-  override string getLabel() { result = getExpr().getValue() }
+  override string getLabel() { result = this.getExpr().getValue() }
 
   override string toString() { result = "goto case ...;" }
 
@@ -764,14 +767,14 @@ class ThrowStmt extends JumpStmt, ThrowElement, @throw_stmt {
   override ExceptionClass getThrownExceptionType() {
     result = ThrowElement.super.getThrownExceptionType()
     or
-    result = getRethrowParent().(CatchClause).getCaughtExceptionType()
+    result = this.getRethrowParent().(CatchClause).getCaughtExceptionType()
   }
 
   private ControlFlowElement getRethrowParent() {
-    result = this and not exists(getExpr())
+    result = this and not exists(this.getExpr())
     or
     exists(ControlFlowElement mid |
-      mid = getRethrowParent() and
+      mid = this.getRethrowParent() and
       not mid instanceof CatchClause and
       result = mid.getParent()
     )
@@ -785,7 +788,7 @@ class ThrowStmt extends JumpStmt, ThrowElement, @throw_stmt {
  * and may be thrown as an exception.
  */
 class ExceptionClass extends Class {
-  ExceptionClass() { getBaseClass*() instanceof SystemExceptionClass }
+  ExceptionClass() { this.getBaseClass*() instanceof SystemExceptionClass }
 }
 
 /**
@@ -861,6 +864,12 @@ class YieldReturnStmt extends YieldStmt {
   override string getAPrimaryQlClass() { result = "YieldReturnStmt" }
 }
 
+bindingset[cfe1, cfe2]
+pragma[inline_late]
+private predicate sameCallable(ControlFlowElement cfe1, ControlFlowElement cfe2) {
+  cfe1.getEnclosingCallable() = cfe2.getEnclosingCallable()
+}
+
 /**
  * A `try` statement, for example
  *
@@ -897,13 +906,15 @@ class TryStmt extends Stmt, @try_stmt {
   override string getAPrimaryQlClass() { result = "TryStmt" }
 
   /** Gets the `catch` clause that handles an exception of type `ex`, if any. */
-  CatchClause getAnExceptionHandler(ExceptionClass ex) { result = clauseHandlesException(ex, 0) }
+  CatchClause getAnExceptionHandler(ExceptionClass ex) {
+    result = this.clauseHandlesException(ex, 0)
+  }
 
   /**
    * Holds if catch clause `cc` definitely handles exceptions of type `ex`.
    */
   predicate definitelyHandles(ExceptionClass ex, CatchClause cc) {
-    cc = getACatchClause() and
+    cc = this.getACatchClause() and
     not exists(cc.getFilterClause()) and
     (
       cc.getCaughtExceptionType() = ex.getBaseClass*()
@@ -913,22 +924,22 @@ class TryStmt extends Stmt, @try_stmt {
   }
 
   private predicate maybeHandles(ExceptionClass ex, CatchClause cc) {
-    cc = getACatchClause() and
+    cc = this.getACatchClause() and
     cc.getCaughtExceptionType().getBaseClass*() = ex
   }
 
   private CatchClause clauseHandlesException(ExceptionClass ex, int n) {
-    exists(CatchClause clause | clause = getCatchClause(n) |
-      if definitelyHandles(ex, clause)
+    exists(CatchClause clause | clause = this.getCatchClause(n) |
+      if this.definitelyHandles(ex, clause)
       then result = clause
       else
-        if maybeHandles(ex, clause)
+        if this.maybeHandles(ex, clause)
         then
           result = clause or
-          result = clauseHandlesException(ex, n + 1)
+          result = this.clauseHandlesException(ex, n + 1)
         else
           // Does not handle
-          result = clauseHandlesException(ex, n + 1)
+          result = this.clauseHandlesException(ex, n + 1)
     )
   }
 
@@ -939,20 +950,15 @@ class TryStmt extends Stmt, @try_stmt {
    * `try` statement.
    */
   ControlFlowElement getATriedElement() {
-    result = getBlock()
+    result = this.getBlock()
     or
     exists(ControlFlowElement mid |
-      mid = getATriedElement() and
+      mid = this.getATriedElement() and
       not mid instanceof TryStmt and
-      result = getAChild(mid, mid.getEnclosingCallable())
+      result = mid.getAChild() and
+      sameCallable(mid, result)
     )
   }
-}
-
-pragma[noinline]
-private ControlFlowElement getAChild(ControlFlowElement cfe, Callable c) {
-  result = cfe.getAChild() and
-  c = result.getEnclosingCallable()
 }
 
 /**
@@ -981,7 +987,12 @@ class CatchClause extends Stmt, @catch {
    * }
    * ```
    */
-  ExceptionClass getCaughtExceptionType() { catch_type(this, getTypeRef(result), _) }
+  ExceptionClass getCaughtExceptionType() {
+    catch_type(this, result, _)
+    or
+    not catch_type(this, any(Type t), _) and
+    catch_type(this, getTypeRef(result), _)
+  }
 
   /**
    * Gets the `catch` filter clause, if any. For example, the filter expression
@@ -996,10 +1007,10 @@ class CatchClause extends Stmt, @catch {
    * }
    * ```
    */
-  Expr getFilterClause() { result = getChild(2) }
+  Expr getFilterClause() { result = this.getChild(2) }
 
   /** Holds if this `catch` clause has a filter. */
-  predicate hasFilterClause() { exists(getFilterClause()) }
+  predicate hasFilterClause() { exists(this.getFilterClause()) }
 
   /** Holds if this is the last `catch` clause in the `try` statement that it belongs to. */
   predicate isLast() {
@@ -1120,7 +1131,7 @@ class LockStmt extends Stmt, @lock_stmt {
   override string toString() { result = "lock (...) {...}" }
 
   /** Gets the variable being locked, if any. */
-  Variable getLockVariable() { result.getAnAccess() = getExpr() }
+  Variable getLockVariable() { result.getAnAccess() = this.getExpr() }
 
   /** Gets a statement in the scope of this `lock` statement. */
   Stmt getALockedStmt() {
@@ -1128,14 +1139,14 @@ class LockStmt extends Stmt, @lock_stmt {
     // delegates and lambdas
     result.getParent() = this
     or
-    exists(Stmt mid | mid = getALockedStmt() and result.getParent() = mid)
+    exists(Stmt mid | mid = this.getALockedStmt() and result.getParent() = mid)
   }
 
   /** Holds if this statement is of the form `lock(this) { ... }`. */
-  predicate isLockThis() { getExpr() instanceof ThisAccess }
+  predicate isLockThis() { this.getExpr() instanceof ThisAccess }
 
   /** Gets the type `T` if this statement is of the form `lock(typeof(T)) { ... }`. */
-  Type getLockTypeObject() { result = getExpr().(TypeofExpr).getTypeAccess().getTarget() }
+  Type getLockTypeObject() { result = this.getExpr().(TypeofExpr).getTypeAccess().getTarget() }
 
   override string getAPrimaryQlClass() { result = "LockStmt" }
 }
@@ -1453,7 +1464,7 @@ class LocalFunctionStmt extends Stmt, @local_function_stmt {
   /** Gets the local function defined by this statement. */
   LocalFunction getLocalFunction() { local_function_stmts(this, result) }
 
-  override string toString() { result = getLocalFunction().getName() + "(...)" }
+  override string toString() { result = this.getLocalFunction().getName() + "(...)" }
 
   override string getAPrimaryQlClass() { result = "LocalFunctionStmt" }
 }

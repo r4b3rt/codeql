@@ -7,7 +7,8 @@
  */
 
 import python
-import semmle.python.RegexTreeView
+import semmle.python.regexp.RegexTreeView
+import semmle.python.Yaml
 
 private newtype TPrintAstConfiguration = MkPrintAstConfiguration()
 
@@ -52,12 +53,10 @@ private newtype TPrintAstNode =
   TStmtListNode(StmtList list) {
     shouldPrint(list.getAnItem(), _) and
     not list = any(Module mod).getBody() and
-    not forall(AstNode child | child = list.getAnItem() | isNotNeeded(child)) and
-    exists(list.getAnItem())
+    not forall(AstNode child | child = list.getAnItem() | isNotNeeded(child))
   } or
-  TRegExpTermNode(RegExpTerm term) {
-    exists(StrConst str | term.getRootTerm() = getParsedRegExp(str) and shouldPrint(str, _))
-  }
+  TYamlNode(YamlNode node) or
+  TYamlMappingNode(YamlMapping mapping, int i) { exists(mapping.getKeyNode(i)) }
 
 /**
  * A node in the output tree.
@@ -77,7 +76,7 @@ class PrintAstNode extends TPrintAstNode {
   /**
    * Gets a child of this node.
    */
-  final PrintAstNode getAChild() { result = getChild(_) }
+  final PrintAstNode getAChild() { result = this.getChild(_) }
 
   /**
    * Gets the parent of this node, if any.
@@ -95,7 +94,7 @@ class PrintAstNode extends TPrintAstNode {
    */
   string getProperty(string key) {
     key = "semmle.label" and
-    result = toString()
+    result = this.toString()
   }
 
   /**
@@ -104,7 +103,7 @@ class PrintAstNode extends TPrintAstNode {
    * this.
    */
   string getChildEdgeLabel(int childIndex) {
-    exists(getChild(childIndex)) and
+    exists(this.getChild(childIndex)) and
     result = childIndex.toString()
   }
 }
@@ -158,13 +157,13 @@ class AstElementNode extends PrintAstNode, TElementNode {
 
   override PrintAstNode getChild(int childIndex) {
     exists(AstNode el | result.(AstElementNode).getAstNode() = el |
-      el = this.getChildNode(childIndex) and not el = getStmtList(_, _).getAnItem()
+      el = this.getChildNode(childIndex) and not el = this.getStmtList(_, _).getAnItem()
     )
     or
     // displaying all `StmtList` after the other children.
     exists(int offset | offset = 1 + max([0, any(int index | exists(this.getChildNode(index)))]) |
       exists(int index | childIndex = index + offset |
-        result.(StmtListNode).getList() = getStmtList(index, _)
+        result.(StmtListNode).getList() = this.getStmtList(index, _)
       )
     )
   }
@@ -300,7 +299,7 @@ class StmtListNode extends PrintAstNode, TStmtListNode {
 
   private string getLabel() { this.getList() = any(AstElementNode node).getStmtList(_, result) }
 
-  override string toString() { result = "(StmtList) " + getLabel() }
+  override string toString() { result = "(StmtList) " + this.getLabel() }
 
   override PrintAstNode getChild(int childIndex) {
     exists(AstNode el | result.(AstElementNode).getAstNode() = el | el = list.getItem(childIndex))
@@ -424,39 +423,13 @@ class ParameterNode extends AstElementNode {
 }
 
 /**
- * A print node for a `StrConst`.
+ * A print node for a `StringLiteral`.
  *
  * The string has a child, if the child is used as a regular expression,
  * which is the root of the regular expression.
  */
-class StrConstNode extends AstElementNode {
-  override StrConst element;
-
-  override PrintAstNode getChild(int childIndex) {
-    childIndex = 0 and result.(RegExpTermNode).getTerm() = getParsedRegExp(element)
-  }
-}
-
-/**
- * A print node for a regular expression term.
- */
-class RegExpTermNode extends TRegExpTermNode, PrintAstNode {
-  RegExpTerm term;
-
-  RegExpTermNode() { this = TRegExpTermNode(term) }
-
-  /** Gets the `RegExpTerm` for this node. */
-  RegExpTerm getTerm() { result = term }
-
-  override PrintAstNode getChild(int childIndex) {
-    result.(RegExpTermNode).getTerm() = term.getChild(childIndex)
-  }
-
-  override string toString() {
-    result = "[" + strictconcat(term.getPrimaryQLClass(), " | ") + "] " + term.toString()
-  }
-
-  override Location getLocation() { result = term.getLocation() }
+class StringLiteralNode extends AstElementNode {
+  override StringLiteral element;
 }
 
 /**
@@ -626,7 +599,7 @@ private module PrettyPrinting {
       or
       result = "class " + a.(Class).getName()
       or
-      result = a.(StrConst).getText()
+      result = a.(StringLiteral).getText()
       or
       result = "yield " + a.(Yield).getValue()
       or
@@ -660,6 +633,80 @@ private module PrettyPrinting {
       or
       a instanceof Pass and result = "pass"
     )
+  }
+}
+
+/**
+ * Classes for printing YAML AST.
+ */
+module PrintYaml {
+  /**
+   * A print node representing a YAML value in a .yml file.
+   */
+  class YamlNodeNode extends PrintAstNode, TYamlNode {
+    YamlNode node;
+
+    YamlNodeNode() { this = TYamlNode(node) }
+
+    override string toString() {
+      result = "[" + concat(node.getAPrimaryQlClass(), ",") + "] " + node.toString()
+    }
+
+    override Location getLocation() { result = node.getLocation() }
+
+    /**
+     * Gets the `YAMLNode` represented by this node.
+     */
+    final YamlNode getValue() { result = node }
+
+    override PrintAstNode getChild(int childIndex) {
+      exists(YamlNode child | result.(YamlNodeNode).getValue() = child |
+        child = node.getChildNode(childIndex)
+      )
+    }
+  }
+
+  /**
+   * A print node representing a `YAMLMapping`.
+   *
+   * Each child of this node aggregates the key and value of a mapping.
+   */
+  class YamlMappingNode extends YamlNodeNode {
+    override YamlMapping node;
+
+    override PrintAstNode getChild(int childIndex) {
+      exists(YamlMappingMapNode map | map = result | map.maps(node, childIndex))
+    }
+  }
+
+  /**
+   * A print node representing the `i`th mapping in `mapping`.
+   */
+  class YamlMappingMapNode extends PrintAstNode, TYamlMappingNode {
+    YamlMapping mapping;
+    int i;
+
+    YamlMappingMapNode() { this = TYamlMappingNode(mapping, i) }
+
+    override string toString() {
+      result = "(Mapping " + i + ")" and not exists(mapping.getKeyNode(i).(YamlScalar).getValue())
+      or
+      result = "(Mapping " + i + ") " + mapping.getKeyNode(i).(YamlScalar).getValue() + ":"
+    }
+
+    /**
+     * Holds if this print node represents the `index`th mapping of `m`.
+     */
+    predicate maps(YamlMapping m, int index) {
+      m = mapping and
+      index = i
+    }
+
+    override PrintAstNode getChild(int childIndex) {
+      childIndex = 0 and result.(YamlNodeNode).getValue() = mapping.getKeyNode(i)
+      or
+      childIndex = 1 and result.(YamlNodeNode).getValue() = mapping.getValueNode(i)
+    }
   }
 }
 

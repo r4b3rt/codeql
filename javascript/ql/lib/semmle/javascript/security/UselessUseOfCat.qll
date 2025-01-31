@@ -10,39 +10,35 @@ import Declarations.UnusedVariable
  * A call that executes a system command.
  * This class provides utility predicates for reasoning about command execution calls.
  */
-private class CommandCall extends DataFlow::InvokeNode {
-  SystemCommandExecution command;
-
-  CommandCall() { this = command }
-
+private class CommandCall extends DataFlow::InvokeNode instanceof SystemCommandExecution {
   /**
    * Holds if the call is synchronous (e.g. `execFileSync`).
    */
-  predicate isSync() { command.isSync() }
+  predicate isSync() { super.isSync() }
 
   /**
    * Gets a list that specifies the arguments given to the command.
    */
   DataFlow::ArrayCreationNode getArgumentList() {
-    result = command.getArgumentList().getALocalSource()
+    result = super.getArgumentList().getALocalSource()
   }
 
   /**
    * Gets the callback (if it exists) for an async `exec`-like call.
    */
   DataFlow::FunctionNode getCallback() {
-    not this.isSync() and result = getLastArgument().getALocalSource()
+    not this.isSync() and result = this.getLastArgument().getALocalSource()
   }
 
   /**
    * Holds if the executed command execution has an argument list as a separate argument.
    */
-  predicate hasArgumentList() { exists(getArgumentList()) }
+  predicate hasArgumentList() { exists(this.getArgumentList()) }
 
   /**
    * Gets the data-flow node (if it exists) for an options argument for an `exec`-like call.
    */
-  DataFlow::Node getOptionsArg() { result = command.getOptionsArg() }
+  DataFlow::Node getOptionsArg() { result = super.getOptionsArg() }
 
   /**
    * Gets the constant-string parts that are not part of the command itself.
@@ -52,12 +48,12 @@ private class CommandCall extends DataFlow::InvokeNode {
     if this.hasArgumentList()
     then
       result =
-        getConstantStringParts(getArgumentList()
+        getConstantStringParts(this.getArgumentList()
               .getALocalSource()
               .(DataFlow::ArrayCreationNode)
               .getElement(_))
     else
-      exists(string commandString | commandString = getConstantStringParts(getArgument(0)) |
+      exists(string commandString | commandString = getConstantStringParts(this.getArgument(0)) |
         result = commandString.suffix(1 + commandString.indexOf(" ", 0, 0))
       )
   }
@@ -68,9 +64,9 @@ private class CommandCall extends DataFlow::InvokeNode {
   bindingset[name]
   predicate isACallTo(string name) {
     if this.hasArgumentList()
-    then getArgument(0).mayHaveStringValue(name)
+    then this.getArgument(0).mayHaveStringValue(name)
     else
-      exists(string arg | arg = getConstantStringParts(getArgument(0)) |
+      exists(string arg | arg = getConstantStringParts(this.getArgument(0)) |
         arg.prefix(name.length()) = name
       )
   }
@@ -99,40 +95,39 @@ private string getConstantStringParts(DataFlow::Node node) {
  */
 class UselessCat extends CommandCall {
   UselessCat() {
-    this = command and
-    isACallTo(getACatExecuteable()) and
+    this.isACallTo(getACatExecuteable()) and
     // There is a file to read, it's not just spawning `cat`.
     not (
-      not exists(getArgumentList()) and
-      getArgument(0).mayHaveStringValue(getACatExecuteable())
+      not exists(this.getArgumentList()) and
+      this.getArgument(0).mayHaveStringValue(getACatExecuteable())
     ) and
     // wildcards, pipes, redirections, other bash features, and multiple files (spaces) are OK.
-    not containsNonTrivialShellChar(getNonCommandConstantString()) and
+    not containsNonTrivialShellChar(this.getNonCommandConstantString()) and
     // Only acceptable option is "encoding", everything else is non-trivial to emulate with fs.readFile.
     (
-      not exists(getOptionsArg())
+      not exists(this.getOptionsArg())
       or
-      forex(string prop | exists(getOptionsArg().getALocalSource().getAPropertyWrite(prop)) |
+      forex(string prop | exists(this.getOptionsArg().getALocalSource().getAPropertyWrite(prop)) |
         prop = "encoding"
       )
     ) and
     // If there is a callback, then it must either have one or two parameters, or if there is a third parameter it must be unused.
     (
-      not exists(getCallback())
+      not exists(this.getCallback())
       or
-      exists(DataFlow::FunctionNode func | func = getCallback() |
+      exists(DataFlow::FunctionNode func | func = this.getCallback() |
         func.getNumParameter() = 1
         or
         func.getNumParameter() = 2
         or
         // `exec` can use 3 parameters, `readFile` can only use two, so it is OK to have a third parameter if it is unused,
         func.getNumParameter() = 3 and
-        not exists(SSA::definition(func.getParameter(2).getParameter()))
+        not exists(Ssa::definition(func.getParameter(2).getParameter()))
       )
     ) and
     // The process returned by an async call is unused.
     (
-      isSync()
+      this.isSync()
       or
       inVoidContext(this.getEnclosingExpr())
       or
@@ -303,14 +298,11 @@ module PrettyPrintCatCall {
   bindingset[str]
   private string createSimplifiedStringConcat(string str) {
     // Remove an initial ""+ (e.g. in `""+file`)
-    if str.prefix(5) = "\"\" + "
+    if str.matches("\"\" + %")
     then result = str.suffix(5)
     else
       // prettify `${newpath}` to just newpath
-      if
-        str.prefix(3) = "`${" and
-        str.suffix(str.length() - 2) = "}`" and
-        not str.suffix(3).matches("%{%")
+      if str.matches("`${%") and str.matches("%}`") and not str.suffix(3).matches("%{%")
       then result = str.prefix(str.length() - 2).suffix(3)
       else result = str
   }
@@ -320,7 +312,7 @@ module PrettyPrintCatCall {
    */
   string createFileThatIsReadFromCommandList(CommandCall call) {
     exists(DataFlow::ArrayCreationNode array, DataFlow::Node element |
-      array = call.getArgumentList().(DataFlow::ArrayCreationNode) and
+      array = call.getArgumentList() and
       array.getSize() = 1 and
       element = array.getElement(0)
     |

@@ -27,6 +27,10 @@ If this is not possible you should disable the parsing of external general entit
 This improves security but the code will still be at risk of denial of service and server side request forgery attacks.
 Protection against denial of service attacks may also be implemented by setting entity expansion limits, which is done
 by default in recent JDK and JRE implementations.
+
+We recommend visiting OWASP's <a href="https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html#java">XML Entity Prevention Cheat Sheet</a>,
+finding the specific XML parser, and applying the mitigation listed there. Other mitigations might be sufficient in some cases, but manual verification will be needed,
+as the query will continue to flag the parser as potentially dangerous.
 </p>
 </recommendation>
 

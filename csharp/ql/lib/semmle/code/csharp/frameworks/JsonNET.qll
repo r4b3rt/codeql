@@ -1,15 +1,14 @@
 /**
- * Classes for modelling Json.NET.
+ * Classes for modeling Json.NET.
  */
 
 import csharp
-private import semmle.code.csharp.dataflow.LibraryTypeDataFlow
 
 /** Definitions relating to the `Json.NET` package. */
 module JsonNET {
   /** The namespace `Newtonsoft.Json`. */
   class JsonNETNamespace extends Namespace {
-    JsonNETNamespace() { this.hasQualifiedName("Newtonsoft.Json") }
+    JsonNETNamespace() { this.getFullName() = "Newtonsoft.Json" }
   }
 
   /** A class in `Newtonsoft.Json`. */
@@ -31,14 +30,8 @@ module JsonNET {
   }
 
   /** The class `Newtonsoft.Json.JsonConvert`. */
-  class JsonConvertClass extends JsonClass, LibraryTypeDataFlow {
+  class JsonConvertClass extends JsonClass {
     JsonConvertClass() { this.hasName("JsonConvert") }
-
-    /** Gets a `ToString` method. */
-    private Method getAToStringMethod() {
-      result = this.getAMethod("ToString") and
-      result.isStatic()
-    }
 
     /** Gets a `Deserialize` method. */
     Method getADeserializeMethod() {
@@ -50,40 +43,6 @@ module JsonNET {
     Method getASerializeMethod() {
       result = this.getAMethod() and
       result.getName().matches("Serialize%")
-    }
-
-    private Method getAPopulateMethod() {
-      result = this.getAMethod() and
-      result.getName().matches("Populate%")
-    }
-
-    override predicate callableFlow(
-      CallableFlowSource source, CallableFlowSink sink, SourceDeclarationCallable c,
-      boolean preservesValue
-    ) {
-      // ToString methods
-      c = getAToStringMethod() and
-      preservesValue = false and
-      source = any(CallableFlowSourceArg arg | arg.getArgumentIndex() = 0) and
-      sink instanceof CallableFlowSinkReturn
-      or
-      // Deserialize methods
-      c = getADeserializeMethod() and
-      preservesValue = false and
-      source = any(CallableFlowSourceArg arg | arg.getArgumentIndex() = 0) and
-      sink instanceof CallableFlowSinkReturn
-      or
-      // Serialize methods
-      c = getASerializeMethod() and
-      preservesValue = false and
-      source = any(CallableFlowSourceArg arg | arg.getArgumentIndex() = 0) and
-      sink instanceof CallableFlowSinkReturn
-      or
-      // Populate methods
-      c = getAPopulateMethod() and
-      preservesValue = false and
-      source = any(CallableFlowSourceArg arg | arg.getArgumentIndex() = 0) and
-      sink = any(CallableFlowSinkArg arg | arg.getArgumentIndex() = 1)
     }
   }
 
@@ -120,21 +79,13 @@ module JsonNET {
     SerializedMember() {
       // This member has a Json attribute
       exists(Class attribute | attribute = this.getAnAttribute().getType() |
-        attribute.hasName("JsonPropertyAttribute")
-        or
-        attribute.hasName("JsonDictionaryAttribute")
-        or
-        attribute.hasName("JsonRequiredAttribute")
-        or
-        attribute.hasName("JsonArrayAttribute")
-        or
-        attribute.hasName("JsonConverterAttribute")
-        or
-        attribute.hasName("JsonExtensionDataAttribute")
-        or
-        attribute.hasName("SerializableAttribute") // System.SerializableAttribute
-        or
-        attribute.hasName("DataMemberAttribute") // System.DataMemberAttribute
+        attribute
+            .hasName([
+                "JsonPropertyAttribute", "JsonDictionaryAttribute", "JsonRequiredAttribute",
+                "JsonArrayAttribute", "JsonConverterAttribute", "JsonExtensionDataAttribute",
+                "SerializableAttribute", // System.SerializableAttribute
+                "DataMemberAttribute" // System.DataMemberAttribute
+              ])
       )
       or
       // This field is a member of an explicitly serialized type
@@ -145,7 +96,7 @@ module JsonNET {
   }
 
   /** The class `NewtonSoft.Json.JsonSerializer`. */
-  class JsonSerializerClass extends JsonClass, LibraryTypeDataFlow {
+  class JsonSerializerClass extends JsonClass {
     JsonSerializerClass() { this.hasName("JsonSerializer") }
 
     /** Gets the method for `JsonSerializer.Serialize`. */
@@ -153,29 +104,12 @@ module JsonNET {
 
     /** Gets the method for `JsonSerializer.Deserialize`. */
     Method getDeserializeMethod() { result = this.getAMethod("Deserialize") }
-
-    override predicate callableFlow(
-      CallableFlowSource source, CallableFlowSink sink, SourceDeclarationCallable c,
-      boolean preservesValue
-    ) {
-      // Serialize
-      c = this.getSerializeMethod() and
-      preservesValue = false and
-      source = any(CallableFlowSourceArg arg | arg.getArgumentIndex() = 0) and
-      sink = any(CallableFlowSinkArg arg | arg.getArgumentIndex() = 1)
-      or
-      // Deserialize
-      c = this.getDeserializeMethod() and
-      preservesValue = false and
-      source = any(CallableFlowSourceArg arg | arg.getArgumentIndex() = 0) and
-      sink = any(CallableFlowSinkArg arg | arg.getArgumentIndex() = 1)
-    }
   }
 
   /** Any attribute class that marks a member to not be serialized. */
   private class NotSerializedAttributeClass extends JsonClass {
     NotSerializedAttributeClass() {
-      this.hasName("JsonIgnoreAttribute") or this.hasName("NonSerializedAttribute")
+      this.hasName(["JsonIgnoreAttribute", "NonSerializedAttribute"])
     }
   }
 
@@ -205,40 +139,8 @@ module JsonNET {
   }
 
   /** The `NewtonSoft.Json.Linq.JObject` class. */
-  class JObjectClass extends LinqClass, LibraryTypeDataFlow {
+  class JObjectClass extends LinqClass {
     JObjectClass() { this.hasName("JObject") }
-
-    override predicate callableFlow(
-      CallableFlowSource source, CallableFlowSink sink, SourceDeclarationCallable c,
-      boolean preservesValue
-    ) {
-      // ToString method
-      c = this.getAMethod("ToString") and
-      source instanceof CallableFlowSourceQualifier and
-      sink instanceof CallableFlowSinkReturn and
-      preservesValue = false
-      or
-      // Parse method
-      c = this.getParseMethod() and
-      source = any(CallableFlowSourceArg arg | arg.getArgumentIndex() = 0) and
-      sink instanceof CallableFlowSinkReturn and
-      preservesValue = false
-      or
-      // operator string
-      c =
-        any(Operator op |
-          op.getDeclaringType() = this.getABaseType*() and op.getReturnType() instanceof StringType
-        ) and
-      source.(CallableFlowSourceArg).getArgumentIndex() = 0 and
-      sink instanceof CallableFlowSinkReturn and
-      preservesValue = false
-      or
-      // SelectToken method
-      c = this.getSelectTokenMethod() and
-      source instanceof CallableFlowSourceQualifier and
-      sink instanceof CallableFlowSinkReturn and
-      preservesValue = false
-    }
 
     /** Gets the `Parse` method. */
     Method getParseMethod() { result = this.getAMethod("Parse") }

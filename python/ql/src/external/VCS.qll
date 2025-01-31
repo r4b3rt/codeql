@@ -29,16 +29,16 @@ class Commit extends @svnentry {
     )
   }
 
-  string getAnAffectedFilePath() { result = getAnAffectedFilePath(_) }
+  string getAnAffectedFilePath() { result = this.getAnAffectedFilePath(_) }
 
   File getAnAffectedFile(string action) { svnaffectedfiles(this, result, action) }
 
-  File getAnAffectedFile() { exists(string action | result = this.getAnAffectedFile(action)) }
+  File getAnAffectedFile() { result = this.getAnAffectedFile(_) }
 
   predicate isRecent() { recentCommit(this) }
 
   int daysToNow() {
-    exists(date now | snapshotDate(now) | result = getDate().daysTo(now) and result >= 0)
+    exists(date now | snapshotDate(now) | result = this.getDate().daysTo(now) and result >= 0)
   }
 
   int getRecentAdditionsForFile(File f) { svnchurn(this, f, result, _) }
@@ -46,7 +46,7 @@ class Commit extends @svnentry {
   int getRecentDeletionsForFile(File f) { svnchurn(this, f, _, result) }
 
   int getRecentChurnForFile(File f) {
-    result = getRecentAdditionsForFile(f) + getRecentDeletionsForFile(f)
+    result = this.getRecentAdditionsForFile(f) + this.getRecentDeletionsForFile(f)
   }
 }
 

@@ -2,7 +2,6 @@
 
 import csharp
 private import system.Reflection
-private import semmle.code.csharp.dataflow.ExternalFlow
 
 /** The `System` namespace. */
 class SystemNamespace extends Namespace {
@@ -90,6 +89,8 @@ class SystemBooleanStruct extends BoolType {
     result.getParameter(1).getType() instanceof BoolType and
     result.getReturnType() instanceof BoolType
   }
+
+  override string getAPrimaryQlClass() { result = "SystemBooleanStruct" }
 }
 
 /** The `System.Convert` class. */
@@ -150,28 +151,28 @@ class SystemIComparableInterface extends SystemInterface {
 
 /** The `System.IComparable<T>` interface. */
 class SystemIComparableTInterface extends SystemUnboundGenericInterface {
-  SystemIComparableTInterface() { this.hasName("IComparable<>") }
+  SystemIComparableTInterface() { this.hasName("IComparable`1") }
 
   /** Gets the `CompareTo(T)` method. */
   Method getCompareToMethod() {
     result.getDeclaringType() = this and
     result.hasName("CompareTo") and
     result.getNumberOfParameters() = 1 and
-    result.getParameter(0).getType() = getTypeParameter(0) and
+    result.getParameter(0).getType() = this.getTypeParameter(0) and
     result.getReturnType() instanceof IntType
   }
 }
 
 /** The `System.IEquatable<T>` interface. */
 class SystemIEquatableTInterface extends SystemUnboundGenericInterface {
-  SystemIEquatableTInterface() { this.hasName("IEquatable<>") }
+  SystemIEquatableTInterface() { this.hasName("IEquatable`1") }
 
   /** Gets the `Equals(T)` method. */
   Method getEqualsMethod() {
     result.getDeclaringType() = this and
     result.hasName("Equals") and
     result.getNumberOfParameters() = 1 and
-    result.getParameter(0).getType() = getTypeParameter(0) and
+    result.getParameter(0).getType() = this.getTypeParameter(0) and
     result.getReturnType() instanceof BoolType
   }
 }
@@ -201,28 +202,6 @@ class SystemInt32Struct extends IntType {
   }
 }
 
-/** Data flow for `System.Int32`. */
-private class SystemInt32FlowModelCsv extends SummaryModelCsv {
-  override predicate row(string row) {
-    row =
-      [
-        "System;Int32;false;Parse;(System.String);;Argument[0];ReturnValue;taint",
-        "System;Int32;false;Parse;(System.String,System.IFormatProvider);;Argument[0];ReturnValue;taint",
-        "System;Int32;false;Parse;(System.String,System.Globalization.NumberStyles);;Argument[0];ReturnValue;taint",
-        "System;Int32;false;Parse;(System.String,System.Globalization.NumberStyles,System.IFormatProvider);;Argument[0];ReturnValue;taint",
-        "System;Int32;false;Parse;(System.ReadOnlySpan<System.Char>,System.Globalization.NumberStyles,System.IFormatProvider);;Element of Argument[0];ReturnValue;taint",
-        "System;Int32;false;TryParse;(System.String,System.Int32);;Argument[0];ReturnValue;taint",
-        "System;Int32;false;TryParse;(System.String,System.Int32);;Argument[0];Argument[1];taint",
-        "System;Int32;false;TryParse;(System.ReadOnlySpan<System.Char>,System.Int32);;Element of Argument[0];ReturnValue;taint",
-        "System;Int32;false;TryParse;(System.ReadOnlySpan<System.Char>,System.Int32);;Element of Argument[0];Argument[1];taint",
-        "System;Int32;false;TryParse;(System.String,System.Globalization.NumberStyles,System.IFormatProvider,System.Int32);;Argument[0];ReturnValue;taint",
-        "System;Int32;false;TryParse;(System.String,System.Globalization.NumberStyles,System.IFormatProvider,System.Int32);;Argument[0];Argument[3];taint",
-        "System;Int32;false;TryParse;(System.ReadOnlySpan<System.Char>,System.Globalization.NumberStyles,System.IFormatProvider,System.Int32);;Element of Argument[0];ReturnValue;taint",
-        "System;Int32;false;TryParse;(System.ReadOnlySpan<System.Char>,System.Globalization.NumberStyles,System.IFormatProvider,System.Int32);;Element of Argument[0];Argument[3];taint"
-      ]
-  }
-}
-
 /** The `System.InvalidCastException` class. */
 class SystemInvalidCastExceptionClass extends SystemClass {
   SystemInvalidCastExceptionClass() { this.hasName("InvalidCastException") }
@@ -231,7 +210,7 @@ class SystemInvalidCastExceptionClass extends SystemClass {
 /** The `System.Lazy<T>` class. */
 class SystemLazyClass extends SystemUnboundGenericClass {
   SystemLazyClass() {
-    this.hasName("Lazy<>") and
+    this.hasName("Lazy`1") and
     this.getNumberOfTypeParameters() = 1
   }
 
@@ -239,14 +218,14 @@ class SystemLazyClass extends SystemUnboundGenericClass {
   Property getValueProperty() {
     result.getDeclaringType() = this and
     result.hasName("Value") and
-    result.getType() = getTypeParameter(0)
+    result.getType() = this.getTypeParameter(0)
   }
 }
 
 /** The `System.Nullable<T>` struct. */
 class SystemNullableStruct extends SystemUnboundGenericStruct {
   SystemNullableStruct() {
-    this.hasName("Nullable<>") and
+    this.hasName("Nullable`1") and
     this.getNumberOfTypeParameters() = 1
   }
 
@@ -254,7 +233,7 @@ class SystemNullableStruct extends SystemUnboundGenericStruct {
   Property getValueProperty() {
     result.getDeclaringType() = this and
     result.hasName("Value") and
-    result.getType() = getTypeParameter(0)
+    result.getType() = this.getTypeParameter(0)
   }
 
   /** Gets the `HasValue` property. */
@@ -268,7 +247,7 @@ class SystemNullableStruct extends SystemUnboundGenericStruct {
   Method getAGetValueOrDefaultMethod() {
     result.getDeclaringType() = this and
     result.hasName("GetValueOrDefault") and
-    result.getReturnType() = getTypeParameter(0)
+    result.getReturnType() = this.getTypeParameter(0)
   }
 }
 
@@ -278,9 +257,7 @@ class SystemNullReferenceExceptionClass extends SystemClass {
 }
 
 /** The `System.Object` class. */
-class SystemObjectClass extends SystemClass {
-  SystemObjectClass() { this instanceof ObjectType }
-
+class SystemObjectClass extends SystemClass instanceof ObjectType {
   /** Gets the `Equals(object)` method. */
   Method getEqualsMethod() {
     result.getDeclaringType() = this and
@@ -350,7 +327,7 @@ class SystemOverflowExceptionClass extends SystemClass {
 /** The `System.Predicate<T>` delegate type. */
 class SystemPredicateDelegateType extends SystemUnboundGenericDelegateType {
   SystemPredicateDelegateType() {
-    this.hasName("Predicate<>") and
+    this.hasName("Predicate`1") and
     this.getNumberOfTypeParameters() = 1
   }
 }
@@ -369,11 +346,19 @@ class SystemStringClass extends StringType {
     result.hasName("==")
   }
 
-  /** Gets the `Replace(string/char, string/char)` method. */
+  /** Gets the `Replace(...)` method. */
   Method getReplaceMethod() {
     result.getDeclaringType() = this and
     result.hasName("Replace") and
-    result.getNumberOfParameters() = 2 and
+    result.getNumberOfParameters() in [2 .. 4] and
+    result.getReturnType() instanceof StringType
+  }
+
+  /** Gets the `ReplaceLineEndings(string) method. */
+  Method getReplaceLineEndingsMethod() {
+    result.getDeclaringType() = this and
+    result.hasName("ReplaceLineEndings") and
+    result.getNumberOfParameters() = 1 and
     result.getReturnType() instanceof StringType
   }
 
@@ -550,6 +535,8 @@ class SystemIntPtrType extends ValueType {
     this = any(SystemNamespace n).getATypeDeclaration() and
     this.hasName("IntPtr")
   }
+
+  override string getAPrimaryQlClass() { result = "SystemIntPtrType" }
 }
 
 /** The `System.IDisposable` interface. */
@@ -588,7 +575,7 @@ class IEquatableEqualsMethod extends Method {
       m = any(SystemIEquatableTInterface i).getAConstructedGeneric().getAMethod() and
       m.getUnboundDeclaration() = any(SystemIEquatableTInterface i).getEqualsMethod()
     |
-      this = m or getAnUltimateImplementee() = m
+      this = m or this.getAnUltimateImplementee() = m
     )
   }
 }
@@ -675,9 +662,9 @@ class DisposeMethod extends Method {
 }
 
 /** A method with the signature `void Dispose(bool)`. */
-library class DisposeBoolMethod extends Method {
+class DisposeBoolMethod extends Method {
   DisposeBoolMethod() {
-    hasName("Dispose") and
+    this.hasName("Dispose") and
     this.getReturnType() instanceof VoidType and
     this.getNumberOfParameters() = 1 and
     this.getParameter(0).getType() instanceof BoolType
@@ -695,7 +682,7 @@ predicate implementsDispose(ValueOrRefType t) { getInvokedDisposeMethod(t).getDe
 
 /**
  * Gets the dispose method that will be invoked on a value `x`
- * of type `t` when `x.Dipsose()` is called.
+ * of type `t` when `x.Dispose()` is called.
  *
  * Either the dispose method is (an override of) `IDisposable.Dispose()`,
  * or an implementation of a method `Dispose(bool)` which is called
@@ -767,4 +754,20 @@ class SystemNotImplementedExceptionClass extends SystemClass {
 /** The `System.DateTime` struct. */
 class SystemDateTimeStruct extends SystemStruct {
   SystemDateTimeStruct() { this.hasName("DateTime") }
+}
+
+/** The `System.Span<T>` struct. */
+class SystemSpanStruct extends SystemUnboundGenericStruct {
+  SystemSpanStruct() {
+    this.hasName("Span`1") and
+    this.getNumberOfTypeParameters() = 1
+  }
+}
+
+/** The `System.ReadOnlySpan<T>` struct. */
+class SystemReadOnlySpanStruct extends SystemUnboundGenericStruct {
+  SystemReadOnlySpanStruct() {
+    this.hasName("ReadOnlySpan`1") and
+    this.getNumberOfTypeParameters() = 1
+  }
 }

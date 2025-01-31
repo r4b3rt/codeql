@@ -13,13 +13,13 @@ class SystemDataSqlClientNamespace extends Namespace {
 
 /** A class in the `System.Data.SqlClient` namespace. */
 class SystemDataSqlClientClass extends Class {
-  SystemDataSqlClientClass() { getNamespace() instanceof SystemDataSqlClientNamespace }
+  SystemDataSqlClientClass() { this.getNamespace() instanceof SystemDataSqlClientNamespace }
 }
 
 /** The `System.Data.SqlClient.SqlDataAdapter` class. */
 class SystemDataSqlClientSqlDataAdapterClass extends SystemDataSqlClientClass {
   SystemDataSqlClientSqlDataAdapterClass() {
-    this.hasQualifiedName("System.Data.SqlClient", "SqlDataAdapter")
+    this.hasFullyQualifiedName("System.Data.SqlClient", "SqlDataAdapter")
   }
 }
 

@@ -29,13 +29,15 @@ private class Strcrement extends ArrayFunction, TaintFunction, SideEffectFunctio
     this.getParameter(bufParam).getUnspecifiedType() instanceof PointerType
   }
 
-  override predicate hasArrayInput(int bufParam) { hasArrayWithNullTerminator(bufParam) }
+  override predicate hasArrayInput(int bufParam) { this.hasArrayWithNullTerminator(bufParam) }
 
   override predicate hasTaintFlow(FunctionInput input, FunctionOutput output) {
-    exists(int index | hasArrayInput(index) |
+    exists(int index | this.hasArrayInput(index) |
       input.isParameter(index) and output.isReturnValue()
       or
       input.isParameterDeref(index) and output.isReturnValueDeref()
+      or
+      input.isParameterDeref(index) and output.isParameterDeref(index)
     )
   }
 
@@ -44,6 +46,6 @@ private class Strcrement extends ArrayFunction, TaintFunction, SideEffectFunctio
   override predicate hasOnlySpecificWriteSideEffects() { any() }
 
   override predicate hasSpecificReadSideEffect(ParameterIndex i, boolean buffer) {
-    hasArrayInput(i) and buffer = true
+    this.hasArrayInput(i) and buffer = true
   }
 }

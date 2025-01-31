@@ -12,7 +12,8 @@
  */
 
 import cpp
-private import semmle.code.cpp.commons.Exclusions
+import semmle.code.cpp.commons.Exclusions
+import semmle.code.cpp.ConfigurationTestFile
 
 class PureExprInVoidContext extends ExprInVoidContext {
   PureExprInVoidContext() { this.isPure() }
@@ -66,7 +67,7 @@ predicate functionDefinedInIfDefRecursive(Function f) {
  */
 predicate baseCall(FunctionCall call) {
   call.getNameQualifier().getQualifyingElement() =
-    call.getEnclosingFunction().getDeclaringType().(Class).getABaseClass+()
+    call.getEnclosingFunction().getDeclaringType().getABaseClass+()
 }
 
 from PureExprInVoidContext peivc, Locatable parent, Locatable info, string info_text, string tail
@@ -90,6 +91,7 @@ where
   not peivc.getType() instanceof UnknownType and
   not functionContainsDisabledCodeRecursive(peivc.(FunctionCall).getTarget()) and
   not functionDefinedInIfDefRecursive(peivc.(FunctionCall).getTarget()) and
+  not peivc.getFile() instanceof ConfigurationTestFile and // expressions in files generated during configuration are likely false positives
   if peivc instanceof FunctionCall
   then
     exists(Function target |

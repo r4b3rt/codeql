@@ -1,9 +1,10 @@
-/* Remote Method Invocation. */
+/** Remote Method Invocation. */
+
 import java
 
 /** The interface `java.rmi.Remote`. */
 class TypeRemote extends RefType {
-  TypeRemote() { hasQualifiedName("java.rmi", "Remote") }
+  TypeRemote() { this.hasQualifiedName("java.rmi", "Remote") }
 }
 
 /** A method that is intended to be called via RMI. */
@@ -14,5 +15,5 @@ class RemoteCallableMethod extends Method {
 private predicate remoteCallableMethod(Method method) {
   method.getDeclaringType().getASupertype() instanceof TypeRemote
   or
-  exists(Method meth | remoteCallableMethod(meth) and method.getAnOverride() = meth)
+  exists(Method meth | remoteCallableMethod(meth) and method.overrides(meth))
 }

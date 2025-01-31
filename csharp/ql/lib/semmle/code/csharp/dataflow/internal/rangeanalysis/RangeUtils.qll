@@ -89,14 +89,12 @@ private module Impl {
   }
 
   /** An expression whose value may control the execution of another element. */
-  class Guard extends Expr {
-    Guard() { this instanceof G::Guard }
-
+  class Guard extends Expr instanceof G::Guard {
     /**
      * Holds if basic block `bb` is guarded by this guard having value `v`.
      */
     predicate controlsBasicBlock(ControlFlow::BasicBlock bb, G::AbstractValue v) {
-      this.(G::Guard).controlsBasicBlock(bb, v)
+      super.controlsBasicBlock(bb, v)
     }
 
     /**
@@ -108,7 +106,7 @@ private module Impl {
       exists(Expr e1_, Expr e2_ |
         e1 = unique(ExprNode cfn | hasChild(this, e1_, _, cfn) | cfn) and
         e2 = unique(ExprNode cfn | hasChild(this, e2_, _, cfn) | cfn) and
-        this.(G::Guard).isEquality(e1_, e2_, polarity)
+        super.isEquality(e1_, e2_, polarity)
       )
     }
   }
@@ -152,9 +150,9 @@ private module Impl {
   /**
    * Holds if property `p` matches `property` in `baseClass` or any overrides.
    */
-  predicate propertyOverrides(Property p, string baseClass, string property) {
+  predicate propertyOverrides(Property p, string namespace, string baseClass, string property) {
     exists(Property p2 |
-      p2.getUnboundDeclaration().getDeclaringType().hasQualifiedName(baseClass) and
+      p2.getUnboundDeclaration().getDeclaringType().hasFullyQualifiedName(namespace, baseClass) and
       p2.hasName(property)
     |
       p.overridesOrImplementsOrEquals(p2)
@@ -393,17 +391,24 @@ module ExprNode {
   }
 
   /** A left-shift operation. */
-  class LShiftExpr extends BinaryOperation {
-    override CS::LShiftExpr e;
+  class LeftShiftExpr extends BinaryOperation {
+    override CS::LeftShiftExpr e;
 
-    override TLShiftOp getOp() { any() }
+    override TLeftShiftOp getOp() { any() }
   }
 
   /** A right-shift operation. */
-  class RShiftExpr extends BinaryOperation {
-    override CS::RShiftExpr e;
+  class RightShiftExpr extends BinaryOperation {
+    override CS::RightShiftExpr e;
 
-    override TRShiftOp getOp() { any() }
+    override TRightShiftOp getOp() { any() }
+  }
+
+  /** An unsigned right-shift operation. */
+  class UnsignedRightShiftExpr extends BinaryOperation {
+    override CS::UnsignedRightShiftExpr e;
+
+    override TUnsignedRightShiftOp getOp() { any() }
   }
 
   /** A conditional expression. */
@@ -421,9 +426,9 @@ module ExprNode {
      * "else" expression of this conditional expression.
      */
     ExprNode getBranchExpr(boolean branch) {
-      branch = true and result = getTrueExpr()
+      branch = true and result = this.getTrueExpr()
       or
-      branch = false and result = getFalseExpr()
+      branch = false and result = this.getFalseExpr()
     }
   }
 }
