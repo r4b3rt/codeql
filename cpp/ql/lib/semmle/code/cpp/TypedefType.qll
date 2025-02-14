@@ -13,10 +13,7 @@ private import semmle.code.cpp.internal.ResolveClass
  * ```
  */
 class TypedefType extends UserType {
-  TypedefType() {
-    usertypes(underlyingElement(this), _, 5) or
-    usertypes(underlyingElement(this), _, 14)
-  }
+  TypedefType() { usertypes(underlyingElement(this), _, 18) }
 
   /**
    * Gets the base type of this typedef type.
@@ -25,7 +22,7 @@ class TypedefType extends UserType {
 
   override Type getUnderlyingType() { result = this.getBaseType().getUnderlyingType() }
 
-  override Type stripTopLevelSpecifiers() { result = getBaseType().stripTopLevelSpecifiers() }
+  override Type stripTopLevelSpecifiers() { result = this.getBaseType().stripTopLevelSpecifiers() }
 
   override int getSize() { result = this.getBaseType().getSize() }
 
@@ -43,11 +40,11 @@ class TypedefType extends UserType {
     result = this.getBaseType().getASpecifier()
   }
 
-  override predicate involvesReference() { getBaseType().involvesReference() }
+  override predicate involvesReference() { this.getBaseType().involvesReference() }
 
-  override Type resolveTypedefs() { result = getBaseType().resolveTypedefs() }
+  override Type resolveTypedefs() { result = this.getBaseType().resolveTypedefs() }
 
-  override Type stripType() { result = getBaseType().stripType() }
+  override Type stripType() { result = this.getBaseType().stripType() }
 }
 
 /**
@@ -57,7 +54,7 @@ class TypedefType extends UserType {
  * ```
  */
 class CTypedefType extends TypedefType {
-  CTypedefType() { usertypes(underlyingElement(this), _, 5) }
+  CTypedefType() { usertype_alias_kind(underlyingElement(this), 0) }
 
   override string getAPrimaryQlClass() { result = "CTypedefType" }
 
@@ -73,7 +70,7 @@ class CTypedefType extends TypedefType {
  * ```
  */
 class UsingAliasTypedefType extends TypedefType {
-  UsingAliasTypedefType() { usertypes(underlyingElement(this), _, 14) }
+  UsingAliasTypedefType() { usertype_alias_kind(underlyingElement(this), 1) }
 
   override string getAPrimaryQlClass() { result = "UsingAliasTypedefType" }
 
@@ -90,7 +87,7 @@ class UsingAliasTypedefType extends TypedefType {
  * ```
  */
 class LocalTypedefType extends TypedefType {
-  LocalTypedefType() { isLocal() }
+  LocalTypedefType() { this.isLocal() }
 
   override string getAPrimaryQlClass() { result = "LocalTypedefType" }
 }
@@ -106,25 +103,4 @@ class NestedTypedefType extends TypedefType {
   NestedTypedefType() { this.isMember() }
 
   override string getAPrimaryQlClass() { result = "NestedTypedefType" }
-
-  /**
-   * DEPRECATED: use `.hasSpecifier("private")` instead.
-   *
-   * Holds if this member is private.
-   */
-  deprecated predicate isPrivate() { this.hasSpecifier("private") }
-
-  /**
-   * DEPRECATED: `.hasSpecifier("protected")` instead.
-   *
-   * Holds if this member is protected.
-   */
-  deprecated predicate isProtected() { this.hasSpecifier("protected") }
-
-  /**
-   * DEPRECATED: use `.hasSpecifier("public")` instead.
-   *
-   * Holds if this member is public.
-   */
-  deprecated predicate isPublic() { this.hasSpecifier("public") }
 }

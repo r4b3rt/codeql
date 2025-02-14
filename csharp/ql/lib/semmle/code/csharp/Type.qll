@@ -7,10 +7,10 @@ import Location
 import Namespace
 import Property
 private import Conversion
-private import dotnet
 private import semmle.code.csharp.metrics.Coupling
 private import TypeRef
 private import semmle.code.csharp.frameworks.System
+private import semmle.code.csharp.frameworks.system.runtime.CompilerServices
 
 /**
  * A type.
@@ -19,7 +19,10 @@ private import semmle.code.csharp.frameworks.System
  * a pointer type (`PointerType`), the arglist type (`ArglistType`), an unknown
  * type (`UnknownType`), or a type parameter (`TypeParameter`).
  */
-class Type extends DotNet::Type, Member, TypeContainer, @type {
+class Type extends Member, TypeContainer, @type {
+  /** Gets the name of this type without additional syntax such as `[]` or `*`. */
+  override string getUndecoratedName() { none() }
+
   override string getName() { types(this, _, result) }
 
   override Type getUnboundDeclaration() { result = this }
@@ -37,7 +40,7 @@ class Type extends DotNet::Type, Member, TypeContainer, @type {
   predicate containsTypeParameters() {
     this instanceof TypeParameter
     or
-    not this instanceof UnboundGenericType and getAChild().containsTypeParameters()
+    not this instanceof UnboundGenericType and this.getAChild().containsTypeParameters()
   }
 
   /** Holds if this type is a reference type, or a type parameter that is a reference type. */
@@ -45,6 +48,13 @@ class Type extends DotNet::Type, Member, TypeContainer, @type {
 
   /** Holds if this type is a value type, or a type parameter that is a value type. */
   predicate isValueType() { none() }
+
+  /**
+   * Holds if this type is a ref like type.
+   *
+   * Only `ref struct` types are considered ref like types.
+   */
+  predicate isRefLikeType() { none() }
 }
 
 pragma[nomagic]
@@ -55,31 +65,7 @@ private predicate isObjectClass(Class c) { c instanceof ObjectType }
  *
  * Either a value type (`ValueType`) or a reference type (`RefType`).
  */
-class ValueOrRefType extends DotNet::ValueOrRefType, Type, Attributable, @value_or_ref_type {
-  /**
-   * DEPRECATED: use `getUndecoratedName()` instead.
-   *
-   * Gets the name of this type without `<...>` brackets, in case it is a generic type.
-   */
-  deprecated string getNameWithoutBrackets() { types(this, _, result) }
-
-  /**
-   * Holds if this type has the qualified name `qualifier`.`name`.
-   *
-   * For example the class `System.IO.IOException` has
-   * `qualifier`=`System.IO` and `name`=`IOException`.
-   */
-  override predicate hasQualifiedName(string qualifier, string name) {
-    exists(string enclosing |
-      this.getDeclaringType().hasQualifiedName(qualifier, enclosing) and
-      name = enclosing + "+" + this.getUndecoratedName()
-    )
-    or
-    not exists(this.getDeclaringType()) and
-    qualifier = this.getNamespace().getQualifiedName() and
-    name = this.getUndecoratedName()
-  }
-
+class ValueOrRefType extends Type, Attributable, @value_or_ref_type {
   /** Gets the namespace containing this type. */
   Namespace getNamespace() {
     if exists(this.getDeclaringType())
@@ -87,7 +73,8 @@ class ValueOrRefType extends DotNet::ValueOrRefType, Type, Attributable, @value_
     else result.getATypeDeclaration() = this
   }
 
-  override Namespace getDeclaringNamespace() { this = result.getATypeDeclaration() }
+  /** Gets the namespace declaring this type, if any. */
+  Namespace getDeclaringNamespace() { this = result.getATypeDeclaration() }
 
   override ValueOrRefType getDeclaringType() { none() }
 
@@ -117,9 +104,16 @@ class ValueOrRefType extends DotNet::ValueOrRefType, Type, Attributable, @value_
     parent_namespace_declaration(this, result)
   }
 
+  private Class getExplicitBaseClass() {
+    extend(this, result)
+    or
+    not extend(this, any(Class c)) and
+    extend(this, getTypeRef(result))
+  }
+
   /** Gets the immediate base class of this class, if any. */
   final Class getBaseClass() {
-    extend(this, getTypeRef(result))
+    result = this.getExplicitBaseClass()
     or
     not extend(this, _) and
     not isObjectClass(this) and
@@ -129,12 +123,16 @@ class ValueOrRefType extends DotNet::ValueOrRefType, Type, Attributable, @value_
   }
 
   /** Gets an immediate base interface of this type, if any. */
-  Interface getABaseInterface() { implement(this, getTypeRef(result)) }
+  Interface getABaseInterface() {
+    implement(this, result)
+    or
+    implement(this, getTypeRef(result))
+  }
 
   /** Gets an immediate base type of this type, if any. */
-  override ValueOrRefType getABaseType() {
-    result = getBaseClass() or
-    result = getABaseInterface()
+  ValueOrRefType getABaseType() {
+    result = this.getBaseClass() or
+    result = this.getABaseInterface()
   }
 
   /** Gets an immediate subtype of this type, if any. */
@@ -200,9 +198,9 @@ class ValueOrRefType extends DotNet::ValueOrRefType, Type, Attributable, @value_
    */
   pragma[inline]
   predicate hasCallable(Callable c) {
-    hasMethod(c)
+    this.hasMethod(c)
     or
-    hasMember(c.(Accessor).getDeclaration())
+    this.hasMember(c.(Accessor).getDeclaration())
   }
 
   /**
@@ -234,63 +232,63 @@ class ValueOrRefType extends DotNet::ValueOrRefType, Type, Attributable, @value_
     or
     hasNonOverriddenMember(this.getBaseClass+(), m)
     or
-    hasOverriddenMember(m)
+    this.hasOverriddenMember(m)
   }
 
   cached
   private predicate hasOverriddenMember(Virtualizable v) {
     v.isOverridden() and
-    v = getAMember()
+    v = this.getAMember()
     or
-    getBaseClass().(ValueOrRefType).hasOverriddenMember(v) and
+    this.getBaseClass().(ValueOrRefType).hasOverriddenMember(v) and
     not v.isPrivate() and
-    not memberOverrides(v)
+    not this.memberOverrides(v)
   }
 
   // Predicate folding for proper join-order
   pragma[noinline]
   private predicate memberOverrides(Virtualizable v) {
-    getAMember().(Virtualizable).getOverridee() = v
+    this.getAMember().(Virtualizable).getOverridee() = v
   }
 
   /** Gets a field (or member constant) with the given name. */
-  Field getField(string name) { result = getAMember() and result.hasName(name) }
+  Field getField(string name) { result = this.getAMember() and result.hasName(name) }
 
   /** Gets a field (or member constant) of this type, if any. */
   Field getAField() { result = this.getField(_) }
 
   /** Gets a member constant of this type, if any. */
-  MemberConstant getAConstant() { result = getAMember() }
+  MemberConstant getAConstant() { result = this.getAMember() }
 
   /** Gets a method of this type, if any. */
-  Method getAMethod() { result = getAMember() }
+  Method getAMethod() { result = this.getAMember() }
 
   /** Gets a method of this type with the given name. */
-  Method getAMethod(string name) { result = getAMember() and result.hasName(name) }
+  Method getAMethod(string name) { result = this.getAMember() and result.hasName(name) }
 
   /** Gets a property of this type, if any. */
-  Property getAProperty() { result = getAMember() }
+  Property getAProperty() { result = this.getAMember() }
 
   /** Gets a named property of this type. */
-  Property getProperty(string name) { result = getAMember() and result.hasName(name) }
+  Property getProperty(string name) { result = this.getAMember() and result.hasName(name) }
 
   /** Gets an indexer of this type, if any. */
-  Indexer getAnIndexer() { result = getAMember() }
+  Indexer getAnIndexer() { result = this.getAMember() }
 
   /** Gets an event of this type, if any. */
-  Event getAnEvent() { result = getAMember() }
+  Event getAnEvent() { result = this.getAMember() }
 
   /** Gets a user-defined operator of this type, if any. */
-  Operator getAnOperator() { result = getAMember() }
+  Operator getAnOperator() { result = this.getAMember() }
 
   /** Gets a static or instance constructor of this type, if any. */
-  Constructor getAConstructor() { result = getAMember() }
+  Constructor getAConstructor() { result = this.getAMember() }
 
   /** Gets the static constructor of this type, if any. */
-  StaticConstructor getStaticConstructor() { result = getAMember() }
+  StaticConstructor getStaticConstructor() { result = this.getAMember() }
 
   /** Gets a nested type of this type, if any. */
-  NestedType getANestedType() { result = getAMember() }
+  NestedType getANestedType() { result = this.getAMember() }
 
   /** Gets the number of types that directly depend on this type. */
   int getAfferentCoupling() { afferentCoupling(this, result) }
@@ -300,7 +298,7 @@ class ValueOrRefType extends DotNet::ValueOrRefType, Type, Attributable, @value_
 
   /** Gets the length of *some* path to the root of the hierarchy. */
   int getADepth() {
-    this.hasQualifiedName("System", "Object") and result = 0
+    this.hasFullyQualifiedName("System", "Object") and result = 0
     or
     result = this.getABaseType().getADepth() + 1 and
     //prevent recursion on cyclic inheritance (only for incorrect databases)
@@ -372,6 +370,9 @@ class ValueOrRefType extends DotNet::ValueOrRefType, Type, Attributable, @value_
     nested_types(this, _, result)
   }
 
+  /** Holds if this type is a `record`. */
+  predicate isRecord() { this.hasModifier("record") }
+
   override string toString() { result = Type.super.toString() }
 }
 
@@ -402,17 +403,14 @@ class NonNestedType extends ValueOrRefType {
 /**
  * The `void` type.
  */
-class VoidType extends DotNet::ValueOrRefType, Type, @void_type {
-  override predicate hasQualifiedName(string qualifier, string name) {
-    qualifier = "System" and
-    name = "Void"
-  }
-
+class VoidType extends ValueOrRefType, @void_type {
   final override string getName() { result = "Void" }
 
   final override string getUndecoratedName() { result = "Void" }
 
   override SystemNamespace getDeclaringNamespace() { any() }
+
+  override string getAPrimaryQlClass() { result = "VoidType" }
 }
 
 /**
@@ -448,12 +446,22 @@ class SimpleType extends ValueType, @simple_type {
 }
 
 /**
+ * A `record` like type.
+ * This can be either a `class` or a `struct`.
+ */
+class RecordType extends ValueOrRefType {
+  RecordType() { this.isRecord() }
+}
+
+/**
  * The Boolean type, `bool`.
  */
 class BoolType extends SimpleType, @bool_type {
   override string toStringWithTypes() { result = "bool" }
 
   override int getSize() { result = 1 }
+
+  override string getAPrimaryQlClass() { result = "BoolType" }
 }
 
 /**
@@ -467,6 +475,8 @@ class CharType extends SimpleType, @char_type {
   override int minValue() { result = 0 }
 
   override int maxValue() { result = 65535 }
+
+  override string getAPrimaryQlClass() { result = "CharType" }
 }
 
 /**
@@ -506,6 +516,8 @@ class SByteType extends SignedIntegralType, @sbyte_type {
   override int minValue() { result = -128 }
 
   override int maxValue() { result = 127 }
+
+  override string getAPrimaryQlClass() { result = "SByteType" }
 }
 
 /**
@@ -519,6 +531,8 @@ class ShortType extends SignedIntegralType, @short_type {
   override int minValue() { result = -32768 }
 
   override int maxValue() { result = 32767 }
+
+  override string getAPrimaryQlClass() { result = "ShortType" }
 }
 
 /**
@@ -532,6 +546,8 @@ class IntType extends SignedIntegralType, @int_type {
   override int minValue() { result = -2147483647 - 1 }
 
   override int maxValue() { result = 2147483647 }
+
+  override string getAPrimaryQlClass() { result = "IntType" }
 }
 
 /**
@@ -541,6 +557,8 @@ class LongType extends SignedIntegralType, @long_type {
   override string toStringWithTypes() { result = "long" }
 
   override int getSize() { result = 8 }
+
+  override string getAPrimaryQlClass() { result = "LongType" }
 }
 
 /**
@@ -552,6 +570,8 @@ class ByteType extends UnsignedIntegralType, @byte_type {
   override int getSize() { result = 1 }
 
   override int maxValue() { result = 255 }
+
+  override string getAPrimaryQlClass() { result = "ByteType" }
 }
 
 /**
@@ -563,6 +583,8 @@ class UShortType extends UnsignedIntegralType, @ushort_type {
   override int getSize() { result = 2 }
 
   override int maxValue() { result = 65535 }
+
+  override string getAPrimaryQlClass() { result = "UShortType" }
 }
 
 /**
@@ -572,6 +594,8 @@ class UIntType extends UnsignedIntegralType, @uint_type {
   override string toStringWithTypes() { result = "uint" }
 
   override int getSize() { result = 4 }
+
+  override string getAPrimaryQlClass() { result = "UIntType" }
 }
 
 /**
@@ -581,6 +605,8 @@ class ULongType extends UnsignedIntegralType, @ulong_type {
   override string toStringWithTypes() { result = "ulong" }
 
   override int getSize() { result = 8 }
+
+  override string getAPrimaryQlClass() { result = "ULongType" }
 }
 
 /**
@@ -597,6 +623,8 @@ class FloatType extends FloatingPointType, @float_type {
   override string toStringWithTypes() { result = "float" }
 
   override int getSize() { result = 4 }
+
+  override string getAPrimaryQlClass() { result = "FloatType" }
 }
 
 /**
@@ -606,6 +634,8 @@ class DoubleType extends FloatingPointType, @double_type {
   override string toStringWithTypes() { result = "double" }
 
   override int getSize() { result = 8 }
+
+  override string getAPrimaryQlClass() { result = "DoubleType" }
 }
 
 /**
@@ -615,6 +645,8 @@ class DecimalType extends SimpleType, @decimal_type {
   override string toStringWithTypes() { result = "decimal" }
 
   override int getSize() { result = 16 }
+
+  override string getAPrimaryQlClass() { result = "DecimalType" }
 }
 
 /**
@@ -641,7 +673,12 @@ class Enum extends ValueType, @enum_type {
    * }
    * ```
    */
-  IntegralType getUnderlyingType() { enum_underlying_type(this, getTypeRef(result)) }
+  IntegralType getUnderlyingType() {
+    enum_underlying_type(this, result)
+    or
+    not enum_underlying_type(this, any(Type t)) and
+    enum_underlying_type(this, getTypeRef(result))
+  }
 
   /**
    * Gets an `enum` constant declared in this `enum`, for example `Even`
@@ -674,13 +711,46 @@ class Enum extends ValueType, @enum_type {
  * ```
  */
 class Struct extends ValueType, @struct_type {
-  /** Holds if this `struct` has a `ref` modifier. */
-  predicate isRef() { hasModifier("ref") }
+  /**
+   * DEPRECATED: Use `instanceof RefStruct` instead.
+   *
+   * Holds if this `struct` has a `ref` modifier.
+   */
+  deprecated predicate isRef() { this.hasModifier("ref") }
 
   /** Holds if this `struct` has a `readonly` modifier. */
-  predicate isReadonly() { hasModifier("readonly") }
+  predicate isReadonly() { this.hasModifier("readonly") }
 
   override string getAPrimaryQlClass() { result = "Struct" }
+}
+
+/**
+ * A `ref struct`, for example
+ *
+ * ```csharp
+ * ref struct S {
+ *  ...
+ * }
+ * ```
+ */
+class RefStruct extends Struct {
+  RefStruct() { this.hasModifier("ref") }
+
+  override string getAPrimaryQlClass() { result = "RefStruct" }
+
+  override predicate isRefLikeType() { any() }
+}
+
+/**
+ * A `record struct`, for example
+ * ```csharp
+ * record struct RS {
+ *   ...
+ * }
+ * ```
+ */
+class RecordStruct extends RecordType, Struct {
+  override string getAPrimaryQlClass() { result = "RecordStruct" }
 }
 
 /**
@@ -695,7 +765,7 @@ class RefType extends ValueOrRefType, @ref_type {
 
   /** Gets a member that overrides a non-abstract member in a super type, if any. */
   private Virtualizable getAnOverrider() {
-    getAMember() = result and
+    this.getAMember() = result and
     exists(Virtualizable v | result.getOverridee() = v and not v.isAbstract())
   }
 
@@ -746,13 +816,11 @@ class Class extends RefType, @class_type {
  * }
  * ```
  */
-class Record extends Class {
-  Record() { this.isRecord() }
-
+class RecordClass extends RecordType, Class {
   /** Gets the clone method of this record. */
   RecordCloneMethod getCloneMethod() { result = this.getAMember() }
 
-  override string getAPrimaryQlClass() { result = "Record" }
+  override string getAPrimaryQlClass() { result = "RecordClass" }
 }
 
 /**
@@ -766,24 +834,30 @@ class Record extends Class {
  */
 class AnonymousClass extends Class {
   AnonymousClass() { anonymous_types(this) }
+
+  override string getAPrimaryQlClass() { result = "AnonymousClass" }
 }
 
 /**
  * The `object` type, `System.Object`.
  */
 class ObjectType extends Class {
-  ObjectType() { this.hasQualifiedName("System.Object") }
+  ObjectType() { this.hasFullyQualifiedName("System", "Object") }
 
   override string toStringWithTypes() { result = "object" }
+
+  override string getAPrimaryQlClass() { result = "ObjectType" }
 }
 
 /**
  * The `string` type, `System.String`.
  */
 class StringType extends Class {
-  StringType() { this.hasQualifiedName("System.String") }
+  StringType() { this.hasFullyQualifiedName("System", "String") }
 
   override string toStringWithTypes() { result = "string" }
+
+  override string getAPrimaryQlClass() { result = "StringType" }
 }
 
 /**
@@ -808,7 +882,12 @@ class Interface extends RefType, @interface_type {
  */
 class DelegateType extends RefType, Parameterizable, @delegate_type {
   /** Gets the return type of this delegate. */
-  Type getReturnType() { delegate_return_type(this, getTypeRef(result)) }
+  Type getReturnType() {
+    delegate_return_type(this, result)
+    or
+    not delegate_return_type(this, any(Type t)) and
+    delegate_return_type(this, getTypeRef(result))
+  }
 
   /** Gets the annotated return type of this delegate. */
   AnnotatedType getAnnotatedReturnType() { result.appliesTo(this) }
@@ -820,7 +899,7 @@ private newtype TCallingConvention =
   MkCallingConvention(int i) { function_pointer_calling_conventions(_, i) }
 
 /**
- * Represents a signature calling convention. Specifies how arguments in a given
+ * A signature representing a calling convention. Specifies how arguments in a given
  * signature are passed from the caller to the callee.
  */
 class CallingConvention extends TCallingConvention {
@@ -828,21 +907,21 @@ class CallingConvention extends TCallingConvention {
   string toString() { result = "CallingConvention" }
 }
 
-/** Managed calling convention with fixed-length argument list. */
+/** A managed calling convention with fixed-length argument list. */
 class DefaultCallingConvention extends CallingConvention {
   DefaultCallingConvention() { this = MkCallingConvention(0) }
 
   override string toString() { result = "DefaultCallingConvention" }
 }
 
-/** Unmanaged C/C++-style calling convention where the call stack is cleaned by the caller. */
+/** An unmanaged C/C++-style calling convention where the call stack is cleaned by the caller. */
 class CDeclCallingConvention extends CallingConvention {
   CDeclCallingConvention() { this = MkCallingConvention(1) }
 
   override string toString() { result = "CDeclCallingConvention" }
 }
 
-/** Unmanaged calling convention where call stack is cleaned up by the callee. */
+/** An unmanaged calling convention where call stack is cleaned up by the callee. */
 class StdCallCallingConvention extends CallingConvention {
   StdCallCallingConvention() { this = MkCallingConvention(2) }
 
@@ -850,7 +929,7 @@ class StdCallCallingConvention extends CallingConvention {
 }
 
 /**
- * Unmanaged C++-style calling convention for calling instance member functions
+ * An unmanaged C++-style calling convention for calling instance member functions
  * with a fixed argument list.
  */
 class ThisCallCallingConvention extends CallingConvention {
@@ -859,18 +938,28 @@ class ThisCallCallingConvention extends CallingConvention {
   override string toString() { result = "ThisCallCallingConvention" }
 }
 
-/** Unmanaged calling convention where arguments are passed in registers when possible. */
+/** An unmanaged calling convention where arguments are passed in registers when possible. */
 class FastCallCallingConvention extends CallingConvention {
   FastCallCallingConvention() { this = MkCallingConvention(4) }
 
   override string toString() { result = "FastCallCallingConvention" }
 }
 
-/** Managed calling convention for passing extra arguments. */
+/** A managed calling convention for passing extra arguments. */
 class VarArgsCallingConvention extends CallingConvention {
   VarArgsCallingConvention() { this = MkCallingConvention(5) }
 
   override string toString() { result = "VarArgsCallingConvention" }
+}
+
+/**
+ * An unmanaged calling convention that indicates that the specifics
+ * are encoded as modopts.
+ */
+class UnmanagedCallingConvention extends CallingConvention {
+  UnmanagedCallingConvention() { this = MkCallingConvention(9) }
+
+  override string toString() { result = "UnmanagedCallingConvention" }
 }
 
 /**
@@ -882,7 +971,12 @@ class VarArgsCallingConvention extends CallingConvention {
  */
 class FunctionPointerType extends Type, Parameterizable, @function_pointer_type {
   /** Gets the return type of this function pointer. */
-  Type getReturnType() { function_pointer_return_type(this, getTypeRef(result)) }
+  Type getReturnType() {
+    function_pointer_return_type(this, result)
+    or
+    not function_pointer_return_type(this, any(Type t)) and
+    function_pointer_return_type(this, getTypeRef(result))
+  }
 
   /** Gets the calling convention. */
   CallingConvention getCallingConvention() {
@@ -893,59 +987,114 @@ class FunctionPointerType extends Type, Parameterizable, @function_pointer_type 
 
   /** Gets the unmanaged calling convention at index `i`. */
   Type getUnmanagedCallingConvention(int i) {
+    has_unmanaged_calling_conventions(this, i, result)
+    or
+    not has_unmanaged_calling_conventions(this, i, any(Type t)) and
     has_unmanaged_calling_conventions(this, i, getTypeRef(result))
   }
 
   /** Gets an unmanaged calling convention. */
-  Type getAnUnmanagedCallingConvention() { result = getUnmanagedCallingConvention(_) }
+  Type getAnUnmanagedCallingConvention() { result = this.getUnmanagedCallingConvention(_) }
 
   /** Gets the annotated return type of this function pointer type. */
   AnnotatedType getAnnotatedReturnType() { result.appliesTo(this) }
 
   override string getAPrimaryQlClass() { result = "FunctionPointerType" }
-
-  override string getLabel() { result = getName() }
 }
 
 /**
  * The `null` type. The type of the `null` literal.
  */
-class NullType extends RefType, @null_type { }
+class NullType extends RefType, @null_type {
+  override string getAPrimaryQlClass() { result = "NullType" }
+}
 
 /**
  * A nullable type, for example `int?`.
  */
-class NullableType extends ValueType, DotNet::ConstructedGeneric, @nullable_type {
+class NullableType extends ValueType, ConstructedType, @nullable_type {
   /**
    * Gets the underlying value type of this nullable type.
    * For example `int` in `int?`.
    */
-  Type getUnderlyingType() { nullable_underlying_type(this, getTypeRef(result)) }
+  Type getUnderlyingType() {
+    nullable_underlying_type(this, result)
+    or
+    not nullable_underlying_type(this, any(Type t)) and
+    nullable_underlying_type(this, getTypeRef(result))
+  }
 
-  override string toStringWithTypes() { result = getUnderlyingType().toStringWithTypes() + "?" }
+  override UnboundGenericStruct getUnboundGeneric() {
+    result.hasFullyQualifiedName("System", "Nullable`1")
+  }
 
-  override Type getChild(int n) { result = getUnderlyingType() and n = 0 }
+  override string toStringWithTypes() {
+    result = this.getUnderlyingType().toStringWithTypes() + "?"
+  }
 
-  override Location getALocation() { result = getUnderlyingType().getALocation() }
+  override Location getALocation() { result = this.getUnderlyingType().getALocation() }
 
-  override Type getTypeArgument(int p) { p = 0 and result = getUnderlyingType() }
+  override Type getTypeArgument(int p) { p = 0 and result = this.getUnderlyingType() }
 
   override string getAPrimaryQlClass() { result = "NullableType" }
+}
 
-  final override string getName() {
-    result = "Nullable<" + this.getUnderlyingType().getName() + ">"
+/**
+ * An inline array type, for example `MyInlineArray` in
+ * ```csharp
+ * [System.Runtime.CompilerServices.InlineArray(10)]
+ * public struct MyInlineArray
+ * {
+ *     private int _elements0;
+ * }
+ * ```
+ */
+class InlineArrayType extends ValueType, @inline_array_type {
+  private SystemRuntimeCompilerServicesInlineArrayAttribute inline_attribute;
+  private Field element_type_field;
+
+  InlineArrayType() {
+    inline_attribute = this.(Attributable).getAnAttribute() and
+    element_type_field = this.getAField() and
+    not element_type_field.isStatic() and
+    not element_type_field.isConst()
   }
 
-  final override predicate hasQualifiedName(string qualifier, string name) {
-    qualifier = "System" and
-    name = "Nullable<" + this.getUnderlyingType().getQualifiedName() + ">"
+  /**
+   * Gets the element type of this inline array.
+   */
+  Type getElementType() { result = element_type_field.getType() }
+
+  /**
+   * Gets the rank of this inline array (inline arrays always have rank 1).
+   */
+  int getRank() { result = 1 }
+
+  /**
+   * Gets the length of this inline array.
+   */
+  int getLength() { result = inline_attribute.getLength() }
+
+  /**
+   * Gets the dimension of this inline array.
+   */
+  int getDimension() {
+    exists(Type elem | elem = this.getElementType() |
+      result = elem.(InlineArrayType).getDimension() + 1
+      or
+      result = elem.(ArrayType).getDimension() + 1
+      or
+      not elem instanceof ArrayType and not elem instanceof InlineArrayType and result = 1
+    )
   }
+
+  override string getAPrimaryQlClass() { result = "InlineArrayType" }
 }
 
 /**
  * An array type, for example `int[]`.
  */
-class ArrayType extends DotNet::ArrayType, RefType, @array_type {
+class ArrayType extends RefType, @array_type {
   /**
    * Gets the dimension of this array type. For example `int[][]` is of
    * dimension 2, while `int[]` is of dimension 1.
@@ -962,12 +1111,17 @@ class ArrayType extends DotNet::ArrayType, RefType, @array_type {
   predicate isMultiDimensional() { this.getRank() > 1 }
 
   /** Gets the element type of this array, for example `int` in `int[]`. */
-  override Type getElementType() { array_element_type(this, _, _, getTypeRef(result)) }
+  Type getElementType() {
+    array_element_type(this, _, _, result)
+    or
+    not array_element_type(this, _, _, any(Type t)) and
+    array_element_type(this, _, _, getTypeRef(result))
+  }
 
   /** Holds if this array type has the same shape (dimension and rank) as `that` array type. */
   predicate hasSameShapeAs(ArrayType that) {
-    getDimension() = that.getDimension() and
-    getRank() = that.getRank()
+    this.getDimension() = that.getDimension() and
+    this.getRank() = that.getRank()
   }
 
   /**
@@ -981,7 +1135,7 @@ class ArrayType extends DotNet::ArrayType, RefType, @array_type {
   private string getDimensionString(Type elementType) {
     exists(Type et, string res |
       et = this.getElementType() and
-      res = getArraySuffix() and
+      res = this.getArraySuffix() and
       if et instanceof ArrayType
       then result = res + et.(ArrayType).getDimensionString(elementType)
       else (
@@ -996,7 +1150,7 @@ class ArrayType extends DotNet::ArrayType, RefType, @array_type {
     )
   }
 
-  override Type getChild(int n) { result = getElementType() and n = 0 }
+  override Type getChild(int n) { result = this.getElementType() and n = 0 }
 
   override Location getALocation() {
     type_location(this, result)
@@ -1005,40 +1159,34 @@ class ArrayType extends DotNet::ArrayType, RefType, @array_type {
     result = this.getElementType().getALocation()
   }
 
-  final override predicate hasQualifiedName(string qualifier, string name) {
-    exists(Type elementType, string name0 |
-      elementType.hasQualifiedName(qualifier, name0) and
-      name = name0 + this.getDimensionString(elementType)
-    )
-  }
+  override string getAPrimaryQlClass() { result = "ArrayType" }
 }
 
 /**
  * A pointer type, for example `char*`.
  */
-class PointerType extends DotNet::PointerType, Type, @pointer_type {
-  override Type getReferentType() { pointer_referent_type(this, getTypeRef(result)) }
+class PointerType extends Type, @pointer_type {
+  /** Gets the type referred by this pointer type, for example `char` in `char*`. */
+  Type getReferentType() {
+    pointer_referent_type(this, result)
+    or
+    not pointer_referent_type(this, any(Type t)) and
+    pointer_referent_type(this, getTypeRef(result))
+  }
 
-  override string toStringWithTypes() { result = DotNet::PointerType.super.toStringWithTypes() }
+  override string toStringWithTypes() { result = this.getReferentType().toStringWithTypes() + "*" }
 
-  override Type getChild(int n) { result = getReferentType() and n = 0 }
+  override Type getChild(int n) { result = this.getReferentType() and n = 0 }
 
   final override string getName() { types(this, _, result) }
 
-  final override string getUndecoratedName() { result = getReferentType().getUndecoratedName() }
+  final override string getUndecoratedName() {
+    result = this.getReferentType().getUndecoratedName()
+  }
 
-  override Location getALocation() { result = getReferentType().getALocation() }
-
-  override string toString() { result = DotNet::PointerType.super.toString() }
+  override Location getALocation() { result = this.getReferentType().getALocation() }
 
   override string getAPrimaryQlClass() { result = "PointerType" }
-
-  final override predicate hasQualifiedName(string qualifier, string name) {
-    exists(string name0 |
-      this.getReferentType().hasQualifiedName(qualifier, name0) and
-      name = name0 + "*"
-    )
-  }
 }
 
 /**
@@ -1063,14 +1211,22 @@ class ArglistType extends Type, @arglist_type {
  * A type that could not be resolved. This could happen if an indirect reference
  * is not available at compilation time.
  */
-class UnknownType extends Type, @unknown_type { }
+class UnknownType extends Type, @unknown_type {
+  /** Holds if this is the canonical unknown type, and not a type that failed to extract properly. */
+  predicate isCanonical() { types(this, _, "<unknown type>") }
+}
 
 /**
  * A type representing a tuple. For example, `(int, bool, string)`.
  */
 class TupleType extends ValueType, @tuple_type {
   /** Gets the underlying type of this tuple, which is of type `System.ValueTuple`. */
-  Struct getUnderlyingType() { tuple_underlying_type(this, getTypeRef(result)) }
+  Struct getUnderlyingType() {
+    tuple_underlying_type(this, result)
+    or
+    not tuple_underlying_type(this, any(Type t)) and
+    tuple_underlying_type(this, getTypeRef(result))
+  }
 
   /**
    * Gets the `n`th element of this tuple, indexed from 0.
@@ -1082,10 +1238,10 @@ class TupleType extends ValueType, @tuple_type {
    * Gets the type of the `n`th element of this tuple, indexed from 0.
    * For example, the 0th (first) element type of `(int, string)` is `int`.
    */
-  Type getElementType(int n) { result = getElement(n).getType() }
+  Type getElementType(int n) { result = this.getElement(n).getType() }
 
   /** Gets an element of this tuple. */
-  Field getAnElement() { result = getElement(_) }
+  Field getAnElement() { result = this.getElement(_) }
 
   override Location getALocation() { type_location(this, result) }
 
@@ -1093,29 +1249,29 @@ class TupleType extends ValueType, @tuple_type {
    * Gets the arity of this tuple. For example, the arity of
    * `(int, int, double)` is 3.
    */
-  int getArity() { result = count(getAnElement()) }
+  int getArity() { result = count(this.getAnElement()) }
 
   language[monotonicAggregates]
   override string toStringWithTypes() {
     result =
       "(" +
-        concat(Type t, int i | t = getElement(i).getType() | t.toStringWithTypes(), ", " order by i)
-        + ")"
+        concat(Type t, int i |
+          t = this.getElement(i).getType()
+        |
+          t.toStringWithTypes(), ", " order by i
+        ) + ")"
   }
 
   language[monotonicAggregates]
   override string getName() {
     result =
-      "(" + concat(Type t, int i | t = getElement(i).getType() | t.getName(), "," order by i) + ")"
+      "(" + concat(Type t, int i | t = this.getElement(i).getType() | t.getName(), "," order by i) +
+        ")"
   }
-
-  override string getLabel() { result = getUnderlyingType().getLabel() }
 
   override Type getChild(int i) { result = this.getUnderlyingType().getChild(i) }
 
-  final override predicate hasQualifiedName(string qualifier, string name) {
-    this.getUnderlyingType().hasQualifiedName(qualifier, name)
-  }
+  override string getAPrimaryQlClass() { result = "TupleType" }
 }
 
 /**
@@ -1126,7 +1282,11 @@ class TypeMention extends @type_mention {
   Type type;
   @type_mention_parent parent;
 
-  TypeMention() { type_mention(this, getTypeRef(type), parent) }
+  TypeMention() {
+    type_mention(this, type, parent)
+    or
+    type_mention(this, getTypeRef(type), parent)
+  }
 
   /** Gets the type being mentioned. */
   Type getType() { result = type }

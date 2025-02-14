@@ -1,13 +1,14 @@
 /**
  * @name LinuxPrivilegeDroppingOutoforder
  * @description A syscall commonly associated with privilege dropping is being called out of order.
- *                Normally a process drops group ID and sets supplimental groups for the target user
+ *                Normally a process drops group ID and sets supplemental groups for the target user
  *                before setting the target user ID. This can have security impact if the return code
  *                from these methods is not checked.
  * @kind problem
  * @problem.severity recommendation
  * @id cpp/drop-linux-privileges-outoforder
  * @tags security
+ *       experimental
  *       external/cwe/cwe-273
  * @precision medium
  */
@@ -21,9 +22,9 @@ predicate argumentMayBeRoot(Expr e) {
 
 class SetuidLikeFunctionCall extends FunctionCall {
   SetuidLikeFunctionCall() {
-    (getTarget().hasGlobalName("setuid") or getTarget().hasGlobalName("setresuid")) and
+    (this.getTarget().hasGlobalName("setuid") or this.getTarget().hasGlobalName("setresuid")) and
     // setuid/setresuid with the root user are false positives.
-    not argumentMayBeRoot(getArgument(0))
+    not argumentMayBeRoot(this.getArgument(0))
   }
 }
 
@@ -44,16 +45,15 @@ class SetuidLikeWrapperCall extends FunctionCall {
 
 class CallBeforeSetuidFunctionCall extends FunctionCall {
   CallBeforeSetuidFunctionCall() {
-    (
-      getTarget().hasGlobalName("setgid") or
-      getTarget().hasGlobalName("setresgid") or
-      // Compatibility may require skipping initgroups and setgroups return checks.
-      // A stricter best practice is to check the result and errnor for EPERM.
-      getTarget().hasGlobalName("initgroups") or
-      getTarget().hasGlobalName("setgroups")
-    ) and
+    this.getTarget()
+        .hasGlobalName([
+            "setgid", "setresgid",
+            // Compatibility may require skipping initgroups and setgroups return checks.
+            // A stricter best practice is to check the result and errnor for EPERM.
+            "initgroups", "setgroups"
+          ]) and
     // setgid/setresgid/etc with the root group are false positives.
-    not argumentMayBeRoot(getArgument(0))
+    not argumentMayBeRoot(this.getArgument(0))
   }
 }
 

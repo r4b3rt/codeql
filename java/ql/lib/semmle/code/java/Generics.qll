@@ -38,8 +38,8 @@ import Type
  *
  * For example, `X` in `class X<T> { }`.
  */
-class GenericType extends RefType {
-  GenericType() { typeVars(_, _, _, _, this) }
+class GenericType extends ClassOrInterface {
+  GenericType() { typeVars(_, _, _, this) }
 
   /**
    * Gets a parameterization of this generic type, where each use of
@@ -64,17 +64,17 @@ class GenericType extends RefType {
   /**
    * Gets the `i`-th type parameter of this generic type.
    */
-  TypeVariable getTypeParameter(int i) { typeVars(result, _, i, _, this) }
+  TypeVariable getTypeParameter(int i) { typeVars(result, _, i, this) }
 
   /**
    * Gets a type parameter of this generic type.
    */
-  TypeVariable getATypeParameter() { result = getTypeParameter(_) }
+  TypeVariable getATypeParameter() { result = this.getTypeParameter(_) }
 
   /**
    * Gets the number of type parameters of this generic type.
    */
-  int getNumberOfTypeParameters() { result = strictcount(getATypeParameter()) }
+  int getNumberOfTypeParameters() { result = strictcount(this.getATypeParameter()) }
 
   override string getAPrimaryQlClass() { result = "GenericType" }
 }
@@ -101,13 +101,13 @@ class GenericInterface extends GenericType, Interface {
  */
 abstract class BoundedType extends RefType, @boundedtype {
   /** Holds if this type is bounded. */
-  predicate hasTypeBound() { exists(TypeBound tb | tb = this.getATypeBound()) }
+  predicate hasTypeBound() { exists(this.getATypeBound()) }
 
   /** Gets a type bound for this type, if any. */
   TypeBound getATypeBound() { result.getBoundedType() = this }
 
   /** Gets the first type bound for this type, if any. */
-  TypeBound getFirstTypeBound() { result = getATypeBound() and result.getPosition() = 0 }
+  TypeBound getFirstTypeBound() { result = this.getATypeBound() and result.getPosition() = 0 }
 
   /**
    * Gets an upper type bound of this type, or `Object`
@@ -123,9 +123,9 @@ abstract class BoundedType extends RefType, @boundedtype {
 
   /** Gets a transitive upper bound for this type that is not itself a bounded type. */
   RefType getAnUltimateUpperBoundType() {
-    result = getUpperBoundType() and not result instanceof BoundedType
+    result = this.getUpperBoundType() and not result instanceof BoundedType
     or
-    result = getUpperBoundType().(BoundedType).getAnUltimateUpperBoundType()
+    result = this.getUpperBoundType().(BoundedType).getAnUltimateUpperBoundType()
   }
 
   override string getAPrimaryQlClass() { result = "BoundedType" }
@@ -137,12 +137,12 @@ abstract class BoundedType extends RefType, @boundedtype {
  * For example, `T` is a type parameter in
  * `class X<T> { }` and in `<T> void m() { }`.
  */
-class TypeVariable extends BoundedType, @typevariable {
+class TypeVariable extends BoundedType, Modifiable, @typevariable {
   /** Gets the generic type that is parameterized by this type parameter, if any. */
-  RefType getGenericType() { typeVars(this, _, _, _, result) }
+  GenericType getGenericType() { typeVars(this, _, _, result) }
 
   /** Gets the generic callable that is parameterized by this type parameter, if any. */
-  GenericCallable getGenericCallable() { typeVars(this, _, _, _, result) }
+  GenericCallable getGenericCallable() { typeVars(this, _, _, result) }
 
   /**
    * Gets an upper bound of this type parameter, or `Object`
@@ -168,8 +168,8 @@ class TypeVariable extends BoundedType, @typevariable {
 
   /** Gets the lexically enclosing package of this type parameter, if any. */
   override Package getPackage() {
-    result = getGenericType().getPackage() or
-    result = getGenericCallable().getDeclaringType().getPackage()
+    result = this.getGenericType().getPackage() or
+    result = this.getGenericCallable().getDeclaringType().getPackage()
   }
 
   /** Finds a type that was supplied for this parameter. */
@@ -190,10 +190,13 @@ class TypeVariable extends BoundedType, @typevariable {
 
   /** Finds a non-typevariable type that was transitively supplied for this parameter. */
   RefType getAnUltimatelySuppliedType() {
-    result = getASuppliedType() and not result instanceof TypeVariable
+    result = this.getASuppliedType() and not result instanceof TypeVariable
     or
-    result = getASuppliedType().(TypeVariable).getAnUltimatelySuppliedType()
+    result = this.getASuppliedType().(TypeVariable).getAnUltimatelySuppliedType()
   }
+
+  /** Gets the index of `this` type variable. */
+  int getIndex() { typeVars(this, _, result, _) }
 
   override string getAPrimaryQlClass() { result = "TypeVariable" }
 }
@@ -261,7 +264,7 @@ class Wildcard extends BoundedType, @wildcard {
    * Holds if this is the unconstrained wildcard `?`.
    */
   predicate isUnconstrained() {
-    not hasLowerBound() and
+    not this.hasLowerBound() and
     wildcards(this, "?", _)
   }
 
@@ -321,18 +324,11 @@ class TypeBound extends @typebound {
  * For example, `List<Number>` is a parameterization of
  * the generic type `List<E>`, where `E` is a type parameter.
  */
-class ParameterizedType extends RefType {
+class ParameterizedType extends ClassOrInterface {
   ParameterizedType() {
     typeArgs(_, _, this) or
-    typeVars(_, _, _, _, this)
+    typeVars(_, _, _, this)
   }
-
-  /**
-   * The erasure of a parameterized type is its generic counterpart.
-   *
-   * For example, the erasure of both `X<Number>` and `X<Integer>` is `X<T>`.
-   */
-  override RefType getErasure() { erasure(this, result) or this.(GenericType) = result }
 
   /**
    * Gets the generic type corresponding to this parameterized type.
@@ -348,13 +344,13 @@ class ParameterizedType extends RefType {
    */
   RefType getATypeArgument() {
     typeArgs(result, _, this) or
-    typeVars(result, _, _, _, this)
+    typeVars(result, _, _, this)
   }
 
   /** Gets the type argument of this parameterized type at the specified position. */
   RefType getTypeArgument(int pos) {
     typeArgs(result, pos, this) or
-    typeVars(result, _, pos, _, this)
+    typeVars(result, _, pos, this)
   }
 
   /** Gets the number of type arguments of this parameterized type. */
@@ -362,12 +358,14 @@ class ParameterizedType extends RefType {
     result =
       count(int pos |
         typeArgs(_, pos, this) or
-        typeVars(_, _, pos, _, this)
+        typeVars(_, _, pos, this)
       )
   }
 
   /** Holds if this type originates from source code. */
-  override predicate fromSource() { typeVars(_, _, _, _, this) and RefType.super.fromSource() }
+  override predicate fromSource() {
+    typeVars(_, _, _, this) and ClassOrInterface.super.fromSource()
+  }
 
   override string getAPrimaryQlClass() { result = "ParameterizedType" }
 }
@@ -401,13 +399,6 @@ class ParameterizedInterface extends Interface, ParameterizedType {
 class RawType extends RefType {
   RawType() { isRaw(this) }
 
-  /**
-   * The erasure of a raw type is its generic counterpart.
-   *
-   * For example, the erasure of `List` is `List<E>`.
-   */
-  override RefType getErasure() { erasure(this, result) }
-
   /** Holds if this type originates from source code. */
   override predicate fromSource() { not any() }
 
@@ -439,24 +430,24 @@ class GenericCallable extends Callable {
     exists(Callable srcDecl |
       methods(this, _, _, _, _, srcDecl) or constrs(this, _, _, _, _, srcDecl)
     |
-      typeVars(_, _, _, _, srcDecl)
+      typeVars(_, _, _, srcDecl)
     )
   }
 
   /**
    * Gets the `i`-th type parameter of this generic callable.
    */
-  TypeVariable getTypeParameter(int i) { typeVars(result, _, i, _, this.getSourceDeclaration()) }
+  TypeVariable getTypeParameter(int i) { typeVars(result, _, i, this.getSourceDeclaration()) }
 
   /**
    * Gets a type parameter of this generic callable.
    */
-  TypeVariable getATypeParameter() { result = getTypeParameter(_) }
+  TypeVariable getATypeParameter() { result = this.getTypeParameter(_) }
 
   /**
    * Gets the number of type parameters of this generic callable.
    */
-  int getNumberOfTypeParameters() { result = strictcount(getATypeParameter()) }
+  int getNumberOfTypeParameters() { result = strictcount(this.getATypeParameter()) }
 }
 
 /**
@@ -474,7 +465,7 @@ class GenericCall extends Call {
   }
 
   private RefType getAnExplicitTypeArgument(TypeVariable v) {
-    exists(GenericCallable gen, MethodAccess call, int i |
+    exists(GenericCallable gen, MethodCall call, int i |
       this = call and
       gen = call.getCallee() and
       v = gen.getTypeParameter(i) and
@@ -484,10 +475,10 @@ class GenericCall extends Call {
 
   /** Gets a type argument of the call for the given `TypeVariable`. */
   RefType getATypeArgument(TypeVariable v) {
-    result = getAnExplicitTypeArgument(v)
+    result = this.getAnExplicitTypeArgument(v)
     or
-    not exists(getAnExplicitTypeArgument(v)) and
-    result = getAnInferredTypeArgument(v)
+    not exists(this.getAnExplicitTypeArgument(v)) and
+    result = this.getAnInferredTypeArgument(v)
   }
 }
 

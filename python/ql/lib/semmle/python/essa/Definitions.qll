@@ -69,7 +69,13 @@ abstract class SsaSourceVariable extends @py_variable {
     or
     SsaSource::exception_capture(this, def)
     or
+    SsaSource::exception_group_capture(this, def)
+    or
     SsaSource::with_definition(this, def)
+    or
+    SsaSource::pattern_capture_definition(this, def)
+    or
+    SsaSource::pattern_alias_definition(this, def)
   }
 
   /**
@@ -152,17 +158,17 @@ class NonLocalVariable extends SsaSourceVariable {
   }
 
   override ControlFlowNode getAnImplicitUse() {
-    result.(CallNode).getScope().getScope*() = this.(LocalVariable).getScope()
+    result.(CallNode).getScope().getScope*() = this.scope_as_local_variable()
   }
 
   override ControlFlowNode getScopeEntryDefinition() {
     exists(Function f |
-      f.getScope+() = this.(LocalVariable).getScope() and
+      f.getScope+() = this.scope_as_local_variable() and
       f.getEntryNode() = result
     )
     or
     not this.(LocalVariable).isParameter() and
-    this.(LocalVariable).getScope().getEntryNode() = result
+    this.scope_as_local_variable().getEntryNode() = result
   }
 
   pragma[noinline]
@@ -201,33 +207,33 @@ class BuiltinVariable extends SsaSourceVariable {
   override CallNode redefinedAtCallSite() { none() }
 }
 
-class ModuleVariable extends SsaSourceVariable {
+class ModuleVariable extends SsaSourceVariable instanceof GlobalVariable {
   ModuleVariable() {
-    this instanceof GlobalVariable and
-    (
-      exists(this.(Variable).getAStore())
-      or
-      this.(Variable).getId() = "__name__"
-      or
-      this.(Variable).getId() = "__package__"
-      or
-      exists(ImportStar is | is.getScope() = this.(Variable).getScope())
-    )
+    exists(this.(Variable).getAStore())
+    or
+    this.(Variable).getId() = "__name__"
+    or
+    this.(Variable).getId() = "__package__"
+    or
+    exists(ImportStar is | is.getScope() = this.(Variable).getScope())
   }
 
+  pragma[nomagic]
+  private Scope scope_as_global_variable() { result = GlobalVariable.super.getScope() }
+
   pragma[noinline]
-  CallNode global_variable_callnode() { result.getScope() = this.(GlobalVariable).getScope() }
+  CallNode global_variable_callnode() { result.getScope() = this.scope_as_global_variable() }
 
   pragma[noinline]
   ImportMemberNode global_variable_import() {
-    result.getScope() = this.(GlobalVariable).getScope() and
-    import_from_dot_in_init(result.(ImportMemberNode).getModule(this.getName()))
+    result.getScope() = this.scope_as_global_variable() and
+    import_from_dot_in_init(result.getModule(this.getName()))
   }
 
   override ControlFlowNode getAnImplicitUse() {
-    result = global_variable_callnode()
+    result = this.global_variable_callnode()
     or
-    result = global_variable_import()
+    result = this.global_variable_import()
     or
     exists(ImportTimeScope scope | scope.entryEdge(result, _) |
       this = scope.getOuterVariable(_) or
@@ -250,13 +256,13 @@ class ModuleVariable extends SsaSourceVariable {
   override ControlFlowNode getScopeEntryDefinition() {
     exists(Scope s | s.getEntryNode() = result |
       /* Module entry point */
-      this.(GlobalVariable).getScope() = s
+      this.scope_as_global_variable() = s
       or
       /* For implicit use of __metaclass__ when constructing class */
       class_with_global_metaclass(s, this)
       or
       /* Variable is used in scope */
-      this.(GlobalVariable).getAUse().getScope() = s
+      GlobalVariable.super.getAUse().getScope() = s
     )
     or
     exists(ImportTimeScope scope | scope.entryEdge(_, result) |
@@ -286,13 +292,13 @@ class EscapingGlobalVariable extends ModuleVariable {
   override ControlFlowNode getAnImplicitUse() {
     result = ModuleVariable.super.getAnImplicitUse()
     or
-    result.(CallNode).getScope().getScope+() = this.(GlobalVariable).getScope()
+    result.(CallNode).getScope().getScope+() = this.scope_as_global_variable()
     or
     result = this.innerScope().getANormalExit()
   }
 
   private Scope innerScope() {
-    result.getScope+() = this.(GlobalVariable).getScope() and
+    result.getScope+() = this.scope_as_global_variable() and
     not result instanceof ImportTimeScope
   }
 
@@ -306,7 +312,7 @@ class EscapingGlobalVariable extends ModuleVariable {
   Scope scope_as_global_variable() { result = this.(GlobalVariable).getScope() }
 
   override CallNode redefinedAtCallSite() {
-    result.(CallNode).getScope().getScope*() = this.scope_as_global_variable()
+    result.getScope().getScope*() = this.scope_as_global_variable()
   }
 }
 
@@ -332,7 +338,7 @@ class SpecialSsaSourceVariable extends SsaSourceVariable {
   Scope scope_as_global_variable() { result = this.(GlobalVariable).getScope() }
 
   override CallNode redefinedAtCallSite() {
-    result.(CallNode).getScope().getScope*() = this.scope_as_global_variable()
+    result.getScope().getScope*() = this.scope_as_global_variable()
   }
 }
 

@@ -12,13 +12,13 @@ private import semmle.code.java.frameworks.Networking
  */
 class HttpStringLiteral extends StringLiteral {
   HttpStringLiteral() {
-    exists(string s | this.getRepresentedString() = s |
+    exists(string s | this.getValue() = s |
       s = "http"
       or
       s.matches("http://%") and
       not s.substring(7, s.length()) instanceof PrivateHostName and
       not TaintTracking::localExprTaint(any(StringLiteral p |
-          p.getRepresentedString() instanceof PrivateHostName
+          p.getValue() instanceof PrivateHostName
         ), this.getParent*())
     )
   }
@@ -30,7 +30,8 @@ class HttpStringLiteral extends StringLiteral {
 abstract class UrlOpenSink extends DataFlow::Node { }
 
 private class DefaultUrlOpenSink extends UrlOpenSink {
-  DefaultUrlOpenSink() { sinkNode(this, "open-url") }
+  // request-forgery sinks control the URL of a request
+  DefaultUrlOpenSink() { sinkNode(this, "request-forgery") }
 }
 
 /**
@@ -83,7 +84,7 @@ private predicate createUrlStep(DataFlow::Node node1, DataFlow::Node node2) {
 
 /** Method call of `HttpURLOpenMethod` */
 private predicate urlOpenStep(DataFlow::Node node1, DataFlow::Node node2) {
-  exists(MethodAccess ma |
+  exists(MethodCall ma |
     ma.getMethod() instanceof UrlOpenConnectionMethod and
     node1.asExpr() = ma.getQualifier() and
     ma = node2.asExpr()

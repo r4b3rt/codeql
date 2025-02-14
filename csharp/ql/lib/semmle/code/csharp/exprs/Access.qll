@@ -115,7 +115,7 @@ class MemberAccess extends Access, QualifiableExpr, @member_access_expr {
     not exists(MemberInitializer mi | mi.getLValue() = this)
   }
 
-  override Member getQualifiedDeclaration() { result = getTarget() }
+  override Member getQualifiedDeclaration() { result = this.getTarget() }
 
   override Member getTarget() { none() }
 }
@@ -147,8 +147,8 @@ class AssignableAccess extends Access, @assignable_access_expr {
    * or a `ref` argument in a method call.
    */
   predicate isOutOrRefArgument() {
-    isOutArgument() or
-    isRefArgument()
+    this.isOutArgument() or
+    this.isRefArgument()
   }
 
   /**
@@ -173,8 +173,6 @@ class VariableAccess extends AssignableAccess, @variable_access_expr {
  */
 class VariableRead extends VariableAccess, AssignableRead {
   override VariableRead getANextRead() { result = AssignableRead.super.getANextRead() }
-
-  override VariableRead getAReachableRead() { result = AssignableRead.super.getAReachableRead() }
 }
 
 /**
@@ -199,10 +197,6 @@ class LocalScopeVariableAccess extends VariableAccess, @local_scope_variable_acc
  */
 class LocalScopeVariableRead extends LocalScopeVariableAccess, VariableRead {
   override LocalScopeVariableRead getANextRead() { result = VariableRead.super.getANextRead() }
-
-  override LocalScopeVariableRead getAReachableRead() {
-    result = VariableRead.super.getAReachableRead()
-  }
 }
 
 /**
@@ -241,10 +235,6 @@ class ParameterAccess extends LocalScopeVariableAccess, @parameter_access_expr {
  */
 class ParameterRead extends ParameterAccess, LocalScopeVariableRead {
   override ParameterRead getANextRead() { result = LocalScopeVariableRead.super.getANextRead() }
-
-  override ParameterRead getAReachableRead() {
-    result = LocalScopeVariableRead.super.getAReachableRead()
-  }
 }
 
 /**
@@ -296,10 +286,6 @@ class LocalVariableAccess extends LocalScopeVariableAccess, @local_variable_acce
  */
 class LocalVariableRead extends LocalVariableAccess, LocalScopeVariableRead {
   override LocalVariableRead getANextRead() { result = LocalScopeVariableRead.super.getANextRead() }
-
-  override LocalVariableRead getAReachableRead() {
-    result = LocalScopeVariableRead.super.getAReachableRead()
-  }
 }
 
 /**
@@ -396,7 +382,7 @@ class MemberConstantAccess extends FieldAccess {
  * An internal helper class to share logic between `PropertyAccess` and
  * `PropertyCall`.
  */
-library class PropertyAccessExpr extends Expr, @property_access_expr {
+class PropertyAccessExpr extends Expr, @property_access_expr {
   /** Gets the target of this property access. */
   Property getProperty() { expr_access(this, result) }
 
@@ -441,8 +427,6 @@ class PropertyAccess extends AssignableMemberAccess, PropertyAccessExpr {
  */
 class PropertyRead extends PropertyAccess, AssignableRead {
   override PropertyRead getANextRead() { result = AssignableRead.super.getANextRead() }
-
-  override PropertyRead getAReachableRead() { result = AssignableRead.super.getAReachableRead() }
 }
 
 /**
@@ -507,7 +491,7 @@ class ElementAccess extends AssignableAccess, QualifiableExpr, @element_access_e
    * Gets an index expression of this element access, for example
    * `1` in `x[0, 1]`.
    */
-  Expr getAnIndex() { result = getIndex(_) }
+  Expr getAnIndex() { result = this.getIndex(_) }
 
   /**
    * Gets the `i`th index expression of this element access, for example the
@@ -515,7 +499,7 @@ class ElementAccess extends AssignableAccess, QualifiableExpr, @element_access_e
    */
   Expr getIndex(int i) { result = this.getChild(i) and i >= 0 }
 
-  override Assignable getQualifiedDeclaration() { result = getTarget() }
+  override Assignable getQualifiedDeclaration() { result = this.getTarget() }
 }
 
 /**
@@ -536,7 +520,7 @@ class ElementWrite extends ElementAccess, AssignableWrite { }
  * An internal helper class to share logic between `IndexerAccess` and
  * `IndexerCall`.
  */
-library class IndexerAccessExpr extends Expr, @indexer_access_expr {
+class IndexerAccessExpr extends Expr, @indexer_access_expr {
   /** Gets the target of this indexer access. */
   Indexer getIndexer() { expr_access(this, result) }
 
@@ -580,8 +564,6 @@ class IndexerAccess extends AssignableMemberAccess, ElementAccess, IndexerAccess
  */
 class IndexerRead extends IndexerAccess, ElementRead {
   override IndexerRead getANextRead() { result = ElementRead.super.getANextRead() }
-
-  override IndexerRead getAReachableRead() { result = ElementRead.super.getAReachableRead() }
 }
 
 /**
@@ -615,14 +597,14 @@ class IndexerWrite extends IndexerAccess, ElementWrite { }
  * ```
  */
 class VirtualIndexerAccess extends IndexerAccess {
-  VirtualIndexerAccess() { targetIsOverridableOrImplementable() }
+  VirtualIndexerAccess() { this.targetIsOverridableOrImplementable() }
 }
 
 /**
  * An internal helper class to share logic between `EventAccess` and
  * `EventCall`.
  */
-library class EventAccessExpr extends Expr, @event_access_expr {
+class EventAccessExpr extends Expr, @event_access_expr {
   /** Gets the target of this event access. */
   Event getEvent() { expr_access(this, result) }
 
@@ -647,7 +629,7 @@ library class EventAccessExpr extends Expr, @event_access_expr {
  * ```
  */
 class EventAccess extends AssignableMemberAccess, EventAccessExpr {
-  override Event getTarget() { result = getEvent() }
+  override Event getTarget() { result = this.getEvent() }
 
   override string getAPrimaryQlClass() { result = "EventAccess" }
 }
@@ -707,7 +689,7 @@ class EventWrite extends EventAccess, AssignableWrite { }
  * ```
  */
 class VirtualEventAccess extends EventAccess {
-  VirtualEventAccess() { targetIsOverridableOrImplementable() }
+  VirtualEventAccess() { this.targetIsOverridableOrImplementable() }
 }
 
 /**
@@ -787,7 +769,7 @@ class LocalFunctionAccess extends CallableAccess {
  * ```
  */
 class VirtualMethodAccess extends MethodAccess {
-  VirtualMethodAccess() { targetIsOverridableOrImplementable() }
+  VirtualMethodAccess() { this.targetIsOverridableOrImplementable() }
 }
 
 /**

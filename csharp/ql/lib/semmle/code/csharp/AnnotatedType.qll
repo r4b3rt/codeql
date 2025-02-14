@@ -67,7 +67,7 @@ private module Annotations {
 
     Nullability() { this = TNullability(nullability) }
 
-    override string toString() { result = getMemberString() + getSelfNullability() }
+    override string toString() { result = this.getMemberString() + this.getSelfNullability() }
 
     language[monotonicAggregates]
     private string getMemberString() {
@@ -125,7 +125,9 @@ private module Annotations {
     }
 
     /** Gets a textual representation of this type annotation. */
-    string toString() { result = getTypePrefix() + getNullability() + getTypeSuffix() }
+    string toString() {
+      result = this.getTypePrefix() + this.getNullability() + this.getTypeSuffix()
+    }
 
     private int getFlags() { this = TAnnotationFlags(result, _) }
 
@@ -136,7 +138,7 @@ private module Annotations {
 
     /** Gets an annotation in this set of annotations. */
     TypeAnnotation getAnAnnotation() {
-      isSet(result.getBit())
+      this.isSet(result.getBit())
       or
       result = this.getNullability()
     }
@@ -157,6 +159,11 @@ private module Annotations {
     getNoFlagsNullability(result) = getChildNullability(annotations.getNullability(), i)
   }
 
+  pragma[nomagic]
+  private Nullability getChildNullability0(Nullability n, int i) {
+    nullability_parent(getNullability(result), i, getNullability(n))
+  }
+
   /**
    * Gets the `i`th child of nullability `n`.
    * Returns `n` if the nullability is not explicitly
@@ -165,9 +172,10 @@ private module Annotations {
    */
   bindingset[i]
   Nullability getChildNullability(Nullability n, int i) {
-    if nullability_parent(_, i, getNullability(n))
-    then nullability_parent(getNullability(result), i, getNullability(n))
-    else result = n
+    result = getChildNullability0(n, i)
+    or
+    not exists(getChildNullability0(n, i)) and
+    result = n
   }
 
   /**
@@ -189,7 +197,7 @@ private module Annotations {
     NoNullability() { not nullability_parent(_, _, nullability) }
   }
 
-  /** A type with annotated nullablity, `?`. */
+  /** A type with annotated nullability, `?`. */
   class AnnotatedNullability extends Nullability {
     AnnotatedNullability() { nullability instanceof @annotated }
 
@@ -249,15 +257,21 @@ private int getElementTypeFlags(@has_type_annotation element) {
   result = strictsum(int b | type_annotation(element, b) | b)
 }
 
+private predicate specificTypeParameterNullability(
+  TypeParameterConstraints constraints, Type type, @nullability n
+) {
+  specific_type_parameter_nullability(constraints, type, n)
+  or
+  specific_type_parameter_nullability(constraints, getTypeRef(type), n)
+}
+
 private Annotations::Nullability getTypeParameterNullability(
   TypeParameterConstraints constraints, Type type
 ) {
-  if specific_type_parameter_nullability(constraints, getTypeRef(type), _)
-  then
-    specific_type_parameter_nullability(constraints, getTypeRef(type),
-      Annotations::getNullability(result))
+  if specificTypeParameterNullability(constraints, type, _)
+  then specificTypeParameterNullability(constraints, type, Annotations::getNullability(result))
   else (
-    specific_type_parameter_constraints(constraints, getTypeRef(type)) and
+    type = constraints.getATypeConstraint() and
     result instanceof Annotations::NoNullability
   )
 }
@@ -266,6 +280,11 @@ private Annotations::Nullability getElementNullability(@has_type_annotation elem
   if type_nullability(element, _)
   then type_nullability(element, Annotations::getNullability(result))
   else result instanceof Annotations::NoNullability
+}
+
+pragma[nomagic]
+private predicate isNoFlagsNoNullability(Annotations::TypeAnnotations annotations) {
+  Annotations::getNoFlagsNullability(annotations) instanceof Annotations::NoNullability
 }
 
 private newtype TAnnotatedType =
@@ -280,7 +299,7 @@ private newtype TAnnotatedType =
     Annotations::getNoFlagsNullability(annotations) = getTypeParameterNullability(_, type)
     or
     // All types have at least one annotated type
-    Annotations::getNoFlagsNullability(annotations) instanceof Annotations::NoNullability
+    isNoFlagsNoNullability(annotations) and exists(type)
     or
     exists(AnnotatedArrayType at |
       type = at.getType().(ArrayType).getElementType() and
@@ -298,7 +317,7 @@ class AnnotatedType extends TAnnotatedType {
   /** Gets a textual representation of this annotated type. */
   string toString() {
     result =
-      annotations.getTypePrefix() + getUnderlyingType().toStringWithTypes() +
+      annotations.getTypePrefix() + this.getUnderlyingType().toStringWithTypes() +
         annotations.getTypeSuffix()
   }
 
@@ -327,7 +346,7 @@ class AnnotatedType extends TAnnotatedType {
 
   /** Gets a type annotation of this annotated type. */
   private Annotations::TypeAnnotation getAnAnnotation() {
-    result = getAnnotations().getAnAnnotation()
+    result = this.getAnnotations().getAnAnnotation()
   }
 
   /** Holds if the type is a non-nullable reference, for example, `string` in a nullable-enabled context. */
@@ -376,7 +395,7 @@ class AnnotatedArrayType extends AnnotatedType {
 
   private string getDimensionString(AnnotatedType elementType) {
     exists(AnnotatedType et, string res |
-      et = getElementType() and
+      et = this.getElementType() and
       res = type.getArraySuffix() and
       if et.getUnderlyingType() instanceof ArrayType and not et.isNullableRefType()
       then result = res + et.(AnnotatedArrayType).getDimensionString(elementType)
@@ -398,6 +417,8 @@ class AnnotatedArrayType extends AnnotatedType {
 /** A constructed type with additional type information. */
 class AnnotatedConstructedType extends AnnotatedType {
   override ConstructedType type;
+
+  AnnotatedConstructedType() { not type instanceof NullableType }
 
   /** Gets the `i`th type argument of this constructed type. */
   AnnotatedType getTypeArgument(int i) {

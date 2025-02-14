@@ -6,6 +6,7 @@ import semmle.code.cpp.Element
 import semmle.code.cpp.exprs.Access
 import semmle.code.cpp.Initializer
 private import semmle.code.cpp.internal.ResolveClass
+private import semmle.code.cpp.internal.ResolveGlobalVariable
 
 /**
  * A C/C++ variable. For example, in the following code there are four
@@ -32,6 +33,8 @@ private import semmle.code.cpp.internal.ResolveClass
  * can have multiple declarations.
  */
 class Variable extends Declaration, @variable {
+  Variable() { isVariable(underlyingElement(this)) }
+
   override string getAPrimaryQlClass() { result = "Variable" }
 
   /** Gets the initializer of this variable, if any. */
@@ -104,17 +107,17 @@ class Variable extends Declaration, @variable {
 
   override VariableDeclarationEntry getADeclarationEntry() { result.getDeclaration() = this }
 
-  override Location getADeclarationLocation() { result = getADeclarationEntry().getLocation() }
+  override Location getADeclarationLocation() { result = this.getADeclarationEntry().getLocation() }
 
   override VariableDeclarationEntry getDefinition() {
-    result = getADeclarationEntry() and
+    result = this.getADeclarationEntry() and
     result.isDefinition()
   }
 
-  override Location getDefinitionLocation() { result = getDefinition().getLocation() }
+  override Location getDefinitionLocation() { result = this.getDefinition().getLocation() }
 
   override Location getLocation() {
-    if exists(getDefinition())
+    if exists(this.getDefinition())
     then result = this.getDefinitionLocation()
     else result = this.getADeclarationLocation()
   }
@@ -130,7 +133,7 @@ class Variable extends Declaration, @variable {
     or
     exists(AssignExpr ae | ae.getLValue().(Access).getTarget() = this and result = ae.getRValue())
     or
-    exists(ClassAggregateLiteral l | result = l.getFieldExpr(this))
+    exists(ClassAggregateLiteral l | result = l.getAFieldExpr(this))
   }
 
   /**
@@ -141,7 +144,7 @@ class Variable extends Declaration, @variable {
    * `Variable.getInitializer()` to get the variable's initializer,
    * or use `Variable.getAnAssignedValue()` to get an expression that
    * is the right-hand side of an assignment or an initialization of
-   * the varible.
+   * the variable.
    */
   Assignment getAnAssignment() { result.getLValue() = this.getAnAccess() }
 
@@ -170,6 +173,12 @@ class Variable extends Declaration, @variable {
   }
 
   /**
+   * Holds if this variable is declared as part of a structured binding
+   * declaration. For example, `x` in `auto [x, y] = ...`.
+   */
+  predicate isStructuredBinding() { is_structured_binding(underlyingElement(this)) }
+
+  /**
    * Holds if this is a compiler-generated variable. For example, a
    * [range-based for loop](http://en.cppreference.com/w/cpp/language/range-for)
    * typically has three compiler-generated variables, named `__range`,
@@ -178,6 +187,14 @@ class Variable extends Declaration, @variable {
    *    `for (char c : str) { ... }`
    */
   predicate isCompilerGenerated() { compgenerated(underlyingElement(this)) }
+
+  /** Holds if this variable is a template specialization. */
+  predicate isSpecialization() {
+    exists(VariableDeclarationEntry vde |
+      var_decls(unresolveElement(vde), underlyingElement(this), _, _, _) and
+      vde.isSpecialization()
+    )
+  }
 }
 
 /**
@@ -199,7 +216,7 @@ class Variable extends Declaration, @variable {
  * ```
  */
 class VariableDeclarationEntry extends DeclarationEntry, @var_decl {
-  override Variable getDeclaration() { result = getVariable() }
+  override Variable getDeclaration() { result = this.getVariable() }
 
   override string getAPrimaryQlClass() { result = "VariableDeclarationEntry" }
 
@@ -225,7 +242,20 @@ class VariableDeclarationEntry extends DeclarationEntry, @var_decl {
    * int f(int y) { return y; }
    * ```
    */
-  override string getName() { var_decls(underlyingElement(this), _, _, result, _) and result != "" }
+  override string getName() {
+    exists(string name |
+      var_decls(underlyingElement(this), _, _, name, _) and
+      (
+        name != "" and result = name
+        or
+        name = "" and result = this.getVariable().(LocalVariable).getName()
+        or
+        name = "" and
+        not this instanceof ParameterDeclarationEntry and
+        result = this.getVariable().(Parameter).getName()
+      )
+    )
+  }
 
   /**
    * Gets the type of the variable which is being declared or defined.
@@ -245,6 +275,14 @@ class VariableDeclarationEntry extends DeclarationEntry, @var_decl {
   override predicate isDefinition() { var_def(underlyingElement(this)) }
 
   override string getASpecifier() { var_decl_specifiers(underlyingElement(this), result) }
+
+  /** Holds if this declaration is a template specialization. */
+  predicate isSpecialization() { var_specialized(underlyingElement(this)) }
+
+  /**
+   * Gets the requires clause if this declaration is a template with such a clause.
+   */
+  Expr getRequiresClause() { var_requires(underlyingElement(this), unresolveElement(result)) }
 }
 
 /**
@@ -276,32 +314,25 @@ class ParameterDeclarationEntry extends VariableDeclarationEntry {
   int getIndex() { param_decl_bind(underlyingElement(this), result, _) }
 
   private string getAnonymousParameterDescription() {
-    not exists(getName()) and
-    exists(string idx |
-      idx =
-        ((getIndex() + 1).toString() + "th")
-            .replaceAll("1th", "1st")
-            .replaceAll("2th", "2nd")
-            .replaceAll("3th", "3rd")
-            .replaceAll("11st", "11th")
-            .replaceAll("12nd", "12th")
-            .replaceAll("13rd", "13th") and
-      if exists(getCanonicalName())
-      then result = "declaration of " + getCanonicalName() + " as anonymous " + idx + " parameter"
-      else result = "declaration of " + idx + " parameter"
+    not exists(this.getName()) and
+    exists(string anon |
+      anon = "(unnamed parameter " + this.getIndex().toString() + ")" and
+      if exists(this.getCanonicalName())
+      then result = "declaration of " + this.getCanonicalName() + " as " + anon
+      else result = "declaration of " + anon
     )
   }
 
   override string toString() {
-    isDefinition() and
-    result = "definition of " + getName()
+    this.isDefinition() and
+    result = "definition of " + this.getName()
     or
-    not isDefinition() and
-    if getName() = getCanonicalName()
-    then result = "declaration of " + getName()
-    else result = "declaration of " + getCanonicalName() + " as " + getName()
+    not this.isDefinition() and
+    if this.getName() = this.getCanonicalName()
+    then result = "declaration of " + this.getName()
+    else result = "declaration of " + this.getCanonicalName() + " as " + this.getName()
     or
-    result = getAnonymousParameterDescription()
+    result = this.getAnonymousParameterDescription()
   }
 
   /**
@@ -311,8 +342,12 @@ class ParameterDeclarationEntry extends VariableDeclarationEntry {
    */
   string getTypedName() {
     exists(string typeString, string nameString |
-      (if exists(getType().getName()) then typeString = getType().getName() else typeString = "") and
-      (if exists(getName()) then nameString = getName() else nameString = "") and
+      (
+        if exists(this.getType().getName())
+        then typeString = this.getType().getName()
+        else typeString = ""
+      ) and
+      (if exists(this.getName()) then nameString = this.getName() else nameString = "") and
       if typeString != "" and nameString != ""
       then result = typeString + " " + nameString
       else result = typeString + nameString
@@ -384,6 +419,19 @@ class LocalVariable extends LocalScopeVariable, @localvariable {
     exists(DeclStmt s | s.getADeclaration() = this and s.getEnclosingFunction() = result)
     or
     exists(ConditionDeclExpr e | e.getVariable() = this and e.getEnclosingFunction() = result)
+    or
+    orphaned_variables(underlyingElement(this), unresolveElement(result))
+    or
+    coroutine_placeholder_variable(underlyingElement(this), _, unresolveElement(result))
+  }
+
+  override predicate isStatic() {
+    super.isStatic() or orphaned_variables(underlyingElement(this), _)
+  }
+
+  override predicate isCompilerGenerated() {
+    super.isCompilerGenerated() or
+    coroutine_placeholder_variable(underlyingElement(this), _, _)
   }
 }
 
@@ -457,6 +505,9 @@ class GlobalOrNamespaceVariable extends Variable, @globalvariable {
   override Type getType() { globalvariables(underlyingElement(this), unresolveElement(result), _) }
 
   override Element getEnclosingElement() { none() }
+
+  /** Gets a link target which compiled or referenced this global or namespace variable. */
+  LinkTarget getALinkTarget() { this = result.getAGlobalOrNamespaceVariable() }
 }
 
 /**
@@ -540,27 +591,9 @@ class MemberVariable extends Variable, @membervariable {
   }
 
   /** Holds if this member is mutable. */
-  predicate isMutable() { getADeclarationEntry().hasSpecifier("mutable") }
+  predicate isMutable() { this.getADeclarationEntry().hasSpecifier("mutable") }
 
   private Type getAType() { membervariables(underlyingElement(this), unresolveElement(result), _) }
-}
-
-/**
- * A C/C++ function pointer variable.
- *
- * DEPRECATED: use `Variable.getType() instanceof FunctionPointerType` instead.
- */
-deprecated class FunctionPointerVariable extends Variable {
-  FunctionPointerVariable() { this.getType() instanceof FunctionPointerType }
-}
-
-/**
- * A C/C++ function pointer member variable.
- *
- * DEPRECATED: use `MemberVariable.getType() instanceof FunctionPointerType` instead.
- */
-deprecated class FunctionPointerMemberVariable extends MemberVariable {
-  FunctionPointerMemberVariable() { this instanceof FunctionPointerVariable }
 }
 
 /**
@@ -577,7 +610,52 @@ class TemplateVariable extends Variable {
   /**
    * Gets an instantiation of this variable template.
    */
-  Variable getAnInstantiation() { result.isConstructedFrom(this) }
+  Variable getAnInstantiation() {
+    result.isConstructedFrom(this) and
+    not result.isSpecialization()
+  }
+}
+
+/**
+ * A variable that is an instantiation of a template. For example
+ * the instantiation `myTemplateVariable<int>` in the following code:
+ * ```
+ * template<class T>
+ * T myTemplateVariable;
+ *
+ * void caller(int i) {
+ *   myTemplateVariable<int> = i;
+ * }
+ * ```
+ */
+class VariableTemplateInstantiation extends Variable {
+  TemplateVariable tv;
+
+  VariableTemplateInstantiation() { tv.getAnInstantiation() = this }
+
+  override string getAPrimaryQlClass() { result = "VariableTemplateInstantiation" }
+
+  /**
+   * Gets the variable template from which this instantiation was instantiated.
+   *
+   * Example: For `int x<int>`, returns `T x`.
+   */
+  TemplateVariable getTemplate() { result = tv }
+}
+
+/**
+ * An explicit specialization of a C++ variable template.
+ */
+class VariableTemplateSpecialization extends Variable {
+  VariableTemplateSpecialization() { this.isSpecialization() }
+
+  override string getAPrimaryQlClass() { result = "VariableTemplateSpecialization" }
+
+  /**
+   * Gets the primary template for the specialization (the function template
+   * this specializes).
+   */
+  TemplateVariable getPrimaryTemplate() { this.isConstructedFrom(result) }
 }
 
 /**

@@ -118,7 +118,7 @@ private predicate exprReleases(Expr e, Expr released, string kind) {
 }
 
 class Resource extends MemberVariable {
-  Resource() { not isStatic() }
+  Resource() { not this.isStatic() }
 
   // Check that an expr is somewhere in this class - does not have to be a constructor
   predicate inSameClass(Expr e) {
@@ -126,23 +126,23 @@ class Resource extends MemberVariable {
   }
 
   private predicate calledFromDestructor(Function f) {
-    f instanceof Destructor and f.getDeclaringType() = this.getDeclaringType()
+    pragma[only_bind_into](f) instanceof Destructor and
+    f.getDeclaringType() = this.getDeclaringType()
     or
-    exists(Function mid, FunctionCall fc |
-      calledFromDestructor(mid) and
-      fc.getEnclosingFunction() = mid and
-      fc.getTarget() = f and
-      f.getDeclaringType() = this.getDeclaringType()
+    exists(Function mid |
+      this.calledFromDestructor(mid) and
+      mid.calls(f) and
+      pragma[only_bind_out](f.getDeclaringType()) = pragma[only_bind_out](this.getDeclaringType())
     )
   }
 
   predicate inDestructor(Expr e) {
-    exists(Function f | f = e.getEnclosingFunction() | calledFromDestructor(f))
+    exists(Function f | f = e.getEnclosingFunction() | this.calledFromDestructor(f))
   }
 
   predicate acquisitionWithRequiredKind(Assignment acquireAssign, string kind) {
     // acquireAssign is an assignment to this resource
-    acquireAssign.(Assignment).getLValue() = this.getAnAccess() and
+    acquireAssign.getLValue() = this.getAnAccess() and
     // Should be in this class, but *any* member method will do
     this.inSameClass(acquireAssign) and
     // Check that it is an acquisition function and return the corresponding kind
@@ -230,13 +230,13 @@ predicate leakedInSameMethod(Resource r, Expr acquire) {
         )
       )
     )
-    or
-    exists(FunctionAccess fa, string kind |
-      // the address of a function that releases `r` is taken (and likely
-      // used to release `r` at some point).
-      r.acquisitionWithRequiredKind(acquire, kind) and
-      fa.getTarget() = r.getAReleaseExpr(kind).getEnclosingFunction()
-    )
+  )
+  or
+  exists(FunctionAccess fa, string kind |
+    // the address of a function that releases `r` is taken (and likely
+    // used to release `r` at some point).
+    r.acquisitionWithRequiredKind(acquire, kind) and
+    fa.getTarget() = r.getAReleaseExpr(kind).getEnclosingFunction()
   )
 }
 

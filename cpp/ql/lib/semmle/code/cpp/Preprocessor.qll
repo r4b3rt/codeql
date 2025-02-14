@@ -29,8 +29,8 @@ class PreprocessorDirective extends Locatable, @preprocdirect {
   PreprocessorBranch getAGuard() {
     exists(PreprocessorEndif e, int line |
       result.getEndIf() = e and
-      e.getFile() = getFile() and
-      result.getFile() = getFile() and
+      e.getFile() = this.getFile() and
+      result.getFile() = this.getFile() and
       line = this.getLocation().getStartLine() and
       result.getLocation().getStartLine() < line and
       line < e.getLocation().getEndLine()
@@ -42,7 +42,7 @@ private class TPreprocessorBranchDirective = @ppd_branch or @ppd_else or @ppd_en
 
 /**
  * A C/C++ preprocessor branch related directive: `#if`, `#ifdef`,
- * `#ifndef`, `#elif`, `#else` or `#endif`.
+ * `#ifndef`, `#elif`, `#elifdef`, `#elifndef`, `#else` or `#endif`.
  */
 class PreprocessorBranchDirective extends PreprocessorDirective, TPreprocessorBranchDirective {
   /**
@@ -69,11 +69,13 @@ class PreprocessorBranchDirective extends PreprocessorDirective, TPreprocessorBr
    * directives in different translation units, then there can be more than
    * one result.
    */
-  PreprocessorEndif getEndIf() { preprocpair(unresolveElement(getIf()), unresolveElement(result)) }
+  PreprocessorEndif getEndIf() {
+    preprocpair(unresolveElement(this.getIf()), unresolveElement(result))
+  }
 
   /**
-   * Gets the next `#elif`, `#else` or `#endif` matching this branching
-   * directive.
+   * Gets the next `#elif`, `#elifdef`, `#elifndef`, `#else` or `#endif` matching
+   * this branching directive.
    *
    * For example `somePreprocessorBranchDirective.getIf().getNext()` gets
    * the second directive in the same construct as
@@ -86,8 +88,8 @@ class PreprocessorBranchDirective extends PreprocessorDirective, TPreprocessorBr
   }
 
   /**
-   * Gets the index of this branching directive within the matching #if,
-   * #ifdef or #ifndef.
+   * Gets the index of this branching directive within the matching `#if`,
+   * `#ifdef` or `#ifndef`.
    */
   private int getIndexInBranch(PreprocessorBranch branch) {
     this =
@@ -100,8 +102,8 @@ class PreprocessorBranchDirective extends PreprocessorDirective, TPreprocessorBr
 }
 
 /**
- * A C/C++ preprocessor branching directive: `#if`, `#ifdef`, `#ifndef`, or
- * `#elif`.
+ * A C/C++ preprocessor branching directive: `#if`, `#ifdef`, `#ifndef`,
+ * `#elif`, `#elifdef`, or `#elifndef`.
  *
  * A branching directive has a condition and that condition may be evaluated
  * at compile-time.  As a result, the preprocessor will either take the
@@ -137,7 +139,7 @@ class PreprocessorBranch extends PreprocessorBranchDirective, @ppd_branch {
    * which evaluated it, or was not taken by any translation unit which
    * evaluated it.
    */
-  predicate wasPredictable() { not (wasTaken() and wasNotTaken()) }
+  predicate wasPredictable() { not (this.wasTaken() and this.wasNotTaken()) }
 }
 
 /**
@@ -149,8 +151,8 @@ class PreprocessorBranch extends PreprocessorBranchDirective, @ppd_branch {
  * #endif
  * ```
  * For the related notion of a directive which causes branching (which
- * includes `#if`, plus also `#ifdef`, `#ifndef`, and `#elif`), see
- * `PreprocessorBranch`.
+ * includes `#if`, plus also `#ifdef`, `#ifndef`, `#elif`, `#elifdef`,
+ * and `#elifndef`), see `PreprocessorBranch`.
  */
 class PreprocessorIf extends PreprocessorBranch, @ppd_if {
   override string toString() { result = "#if " + this.getHead() }
@@ -221,6 +223,40 @@ class PreprocessorElif extends PreprocessorBranch, @ppd_elif {
 }
 
 /**
+ * A C/C++ preprocessor `#elifdef` directive. For example there is a
+ * `PreprocessorElifdef` on the third line of the following code:
+ * ```
+ * #ifdef MYDEFINE1
+ * // ...
+ * #elifdef MYDEFINE2
+ * // ...
+ * #else
+ * // ...
+ * #endif
+ * ```
+ */
+class PreprocessorElifdef extends PreprocessorBranch, @ppd_elifdef {
+  override string toString() { result = "#elifdef " + this.getHead() }
+}
+
+/**
+ * A C/C++ preprocessor `#elifndef` directive. For example there is a
+ * `PreprocessorElifndef` on the third line of the following code:
+ * ```
+ * #ifdef MYDEFINE1
+ * // ...
+ * #elifndef MYDEFINE2
+ * // ...
+ * #else
+ * // ...
+ * #endif
+ * ```
+ */
+class PreprocessorElifndef extends PreprocessorBranch, @ppd_elifndef {
+  override string toString() { result = "#elifndef " + this.getHead() }
+}
+
+/**
  * A C/C++ preprocessor `#endif` directive. For example there is a
  * `PreprocessorEndif` on the third line of the following code:
  * ```
@@ -268,7 +304,7 @@ class PreprocessorUndef extends PreprocessorDirective, @ppd_undef {
   /**
    * Gets the name of the macro that is undefined.
    */
-  string getName() { result = getHead() }
+  string getName() { result = this.getHead() }
 }
 
 /**

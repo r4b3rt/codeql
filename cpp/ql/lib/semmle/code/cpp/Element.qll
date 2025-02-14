@@ -6,6 +6,8 @@
 import semmle.code.cpp.Location
 private import semmle.code.cpp.Enclosing
 private import semmle.code.cpp.internal.ResolveClass
+private import semmle.code.cpp.internal.ResolveGlobalVariable
+private import semmle.code.cpp.internal.ResolveFunction
 
 /**
  * Get the `Element` that represents this `@element`.
@@ -28,9 +30,15 @@ Element mkElement(@element e) { unresolveElement(result) = e }
 pragma[inline]
 @element unresolveElement(Element e) {
   not result instanceof @usertype and
+  not result instanceof @variable and
+  not result instanceof @function and
   result = e
   or
   e = resolveClass(result)
+  or
+  e = resolveGlobalVariable(result)
+  or
+  e = resolveFunction(result)
 }
 
 /**
@@ -55,13 +63,10 @@ class ElementBase extends @element {
   cached
   string toString() { none() }
 
-  /** DEPRECATED: use `getAPrimaryQlClass` instead. */
-  deprecated string getCanonicalQLClass() { result = this.getAPrimaryQlClass() }
-
   /**
    * Gets a comma-separated list of the names of the primary CodeQL classes to which this element belongs.
    */
-  final string getPrimaryQlClasses() { result = concat(getAPrimaryQlClass(), ",") }
+  final string getPrimaryQlClasses() { result = concat(this.getAPrimaryQlClass(), ",") }
 
   /**
    * Gets the name of a primary CodeQL class to which this element belongs.
@@ -91,13 +96,6 @@ class Element extends ElementBase {
    */
   predicate fromSource() { this.getFile().fromSource() }
 
-  /**
-   * Holds if this element may be from a library.
-   *
-   * DEPRECATED: always true.
-   */
-  deprecated predicate fromLibrary() { this.getFile().fromLibrary() }
-
   /** Gets the primary location of this element. */
   Location getLocation() { none() }
 
@@ -119,10 +117,7 @@ class Element extends ElementBase {
     then
       exists(MacroInvocation mi |
         this = mi.getAGeneratedElement() and
-        not exists(MacroInvocation closer |
-          this = closer.getAGeneratedElement() and
-          mi = closer.getParentInvocation+()
-        ) and
+        not hasCloserMacroInvocation(this, mi) and
         result = mi.getMacro()
       )
     else result = this
@@ -134,7 +129,7 @@ class Element extends ElementBase {
    * or certain kinds of `Statement`.
    */
   Element getParentScope() {
-    // result instanceof class
+    // result instanceof Class
     exists(Declaration m |
       m = this and
       result = m.getDeclaringType() and
@@ -143,31 +138,40 @@ class Element extends ElementBase {
     or
     exists(TemplateClass tc | this = tc.getATemplateArgument() and result = tc)
     or
-    // result instanceof namespace
+    // result instanceof Namespace
     exists(Namespace n | result = n and n.getADeclaration() = this)
     or
     exists(FriendDecl d, Namespace n | this = d and n.getADeclaration() = d and result = n)
     or
     exists(Namespace n | this = n and result = n.getParentNamespace())
     or
-    // result instanceof stmt
+    // result instanceof Stmt
     exists(LocalVariable v |
       this = v and
       exists(DeclStmt ds | ds.getADeclaration() = v and result = ds.getParent())
     )
     or
-    exists(Parameter p | this = p and result = p.getFunction())
+    exists(Parameter p |
+      this = p and
+      (
+        result = p.getFunction() or
+        result = p.getCatchBlock().getParent().(Handler).getParent().(TryStmt).getParent() or
+        result = p.getRequiresExpr().getEnclosingStmt().getParent()
+      )
+    )
     or
     exists(GlobalVariable g, Namespace n | this = g and n.getADeclaration() = g and result = n)
     or
+    exists(TemplateVariable tv | this = tv.getATemplateArgument() and result = tv)
+    or
     exists(EnumConstant e | this = e and result = e.getDeclaringEnum())
     or
-    // result instanceof block|function
+    // result instanceof Block|Function
     exists(BlockStmt b | this = b and blockscope(unresolveElement(b), unresolveElement(result)))
     or
     exists(TemplateFunction tf | this = tf.getATemplateArgument() and result = tf)
     or
-    // result instanceof stmt
+    // result instanceof Stmt
     exists(ControlStructure s | this = s and result = s.getParent())
     or
     using_container(unresolveElement(result), underlyingElement(this))
@@ -206,9 +210,9 @@ class Element extends ElementBase {
   /** Gets the closest `Element` enclosing this one. */
   cached
   Element getEnclosingElement() {
-    result = getEnclosingElementPref()
+    result = this.getEnclosingElementPref()
     or
-    not exists(getEnclosingElementPref()) and
+    not exists(this.getEnclosingElementPref()) and
     (
       this = result.(Class).getAMember()
       or
@@ -246,6 +250,14 @@ class Element extends ElementBase {
   }
 }
 
+pragma[noinline]
+private predicate hasCloserMacroInvocation(Element elem, MacroInvocation mi) {
+  exists(MacroInvocation closer |
+    elem = closer.getAGeneratedElement() and
+    mi = closer.getParentInvocation()
+  )
+}
+
 private predicate isFromTemplateInstantiationRec(Element e, Element instantiation) {
   instantiation.(Function).isConstructedFrom(_) and
   e = instantiation
@@ -281,7 +293,7 @@ private predicate isFromUninstantiatedTemplateRec(Element e, Element template) {
  * ```
  */
 class StaticAssert extends Locatable, @static_assert {
-  override string toString() { result = "static_assert(..., \"" + getMessage() + "\")" }
+  override string toString() { result = "static_assert(..., \"" + this.getMessage() + "\")" }
 
   /**
    * Gets the expression which this static assertion ensures is true.

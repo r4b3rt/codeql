@@ -27,7 +27,7 @@ class Assignment extends Operation, @assign_expr {
   Expr getRValue() { result = this.getChild(0) }
 
   /** Gets the variable being assigned to, if any. */
-  Variable getTargetVariable() { result.getAnAccess() = getLValue() }
+  Variable getTargetVariable() { result.getAnAccess() = this.getLValue() }
 
   override string getOperator() { none() }
 }
@@ -38,7 +38,7 @@ class Assignment extends Operation, @assign_expr {
 class LocalVariableDeclAndInitExpr extends LocalVariableDeclExpr, Assignment {
   override string getOperator() { result = "=" }
 
-  override LocalVariable getTargetVariable() { result = getVariable() }
+  override LocalVariable getTargetVariable() { result = this.getVariable() }
 
   override LocalVariableAccess getLValue() { result = Assignment.super.getLValue() }
 
@@ -86,7 +86,7 @@ class AssignOperation extends Assignment, @assign_op_expr {
    * If an expanded version exists, then it is used in the control
    * flow graph.
    */
-  predicate hasExpandedAssignment() { exists(getExpandedAssignment()) }
+  predicate hasExpandedAssignment() { exists(this.getExpandedAssignment()) }
 
   override string toString() { result = "... " + this.getOperator() + " ..." }
 }
@@ -150,8 +150,9 @@ class AssignRemExpr extends AssignArithmeticOperation, @assign_rem_expr {
  * operation (`AssignAndExpr`), a bitwise-or assignment
  * operation (`AssignOrExpr`), a bitwise exclusive-or assignment
  * operation (`AssignXorExpr`), a left-shift assignment
- * operation (`AssignLShiftExpr`), or a right-shift assignment
- * operation (`AssignRShiftExpr`).
+ * operation (`AssignLeftShiftExpr`), or a right-shift assignment
+ * operation (`AssignRightShiftExpr`), or an unsigned right-shift assignment
+ * operation (`AssignUnsignedRightShiftExpr`).
  */
 class AssignBitwiseOperation extends AssignOperation, @assign_bitwise_expr { }
 
@@ -185,19 +186,28 @@ class AssignXorExpr extends AssignBitwiseOperation, @assign_xor_expr {
 /**
  * A left-shift assignment operation, for example `x <<= y`.
  */
-class AssignLShiftExpr extends AssignBitwiseOperation, @assign_lshift_expr {
+class AssignLeftShiftExpr extends AssignBitwiseOperation, @assign_lshift_expr {
   override string getOperator() { result = "<<=" }
 
-  override string getAPrimaryQlClass() { result = "AssignLShiftExpr" }
+  override string getAPrimaryQlClass() { result = "AssignLeftShiftExpr" }
 }
 
 /**
  * A right-shift assignment operation, for example `x >>= y`.
  */
-class AssignRShiftExpr extends AssignBitwiseOperation, @assign_rshift_expr {
+class AssignRightShiftExpr extends AssignBitwiseOperation, @assign_rshift_expr {
   override string getOperator() { result = ">>=" }
 
-  override string getAPrimaryQlClass() { result = "AssignRShiftExpr" }
+  override string getAPrimaryQlClass() { result = "AssignRightShiftExpr" }
+}
+
+/**
+ * An unsigned right-shift assignment operation, for example `x >>>= y`.
+ */
+class AssignUnsighedRightShiftExpr extends AssignBitwiseOperation, @assign_urshift_expr {
+  override string getOperator() { result = ">>>=" }
+
+  override string getAPrimaryQlClass() { result = "AssignUnsighedRightShiftExpr" }
 }
 
 /**

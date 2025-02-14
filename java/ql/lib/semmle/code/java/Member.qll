@@ -20,22 +20,29 @@ class Member extends Element, Annotatable, Modifiable, @member {
   /** Gets the type in which this member is declared. */
   RefType getDeclaringType() { declaresMember(result, this) }
 
-  /** Gets the qualified name of this member. */
-  string getQualifiedName() { result = getDeclaringType().getName() + "." + getName() }
+  /**
+   * Gets the qualified name of this member.
+   * This is useful for debugging, but for normal use `hasQualifiedName`
+   * is recommended, as it is more efficient.
+   */
+  string getQualifiedName() {
+    result = this.getDeclaringType().getQualifiedName() + "." + this.getName()
+  }
 
   /**
    * Holds if this member has the specified name and is declared in the
    * specified package and type.
    */
+  pragma[nomagic]
   predicate hasQualifiedName(string package, string type, string name) {
     this.getDeclaringType().hasQualifiedName(package, type) and this.hasName(name)
   }
 
   /** Holds if this member is package protected, that is, neither public nor private nor protected. */
   predicate isPackageProtected() {
-    not isPrivate() and
-    not isProtected() and
-    not isPublic()
+    not this.isPrivate() and
+    not this.isProtected() and
+    not this.isPublic()
   }
 
   /**
@@ -62,6 +69,15 @@ class Callable extends StmtParent, Member, @callable {
   }
 
   /**
+   * Gets the declared return Kotlin type of this callable (`Nothing` for
+   * constructors).
+   */
+  KotlinType getReturnKotlinType() {
+    constrsKotlinType(this, result) or
+    methodsKotlinType(this, result)
+  }
+
+  /**
    * Gets a callee that may be called from this callable.
    */
   Callable getACallee() { this.calls(result) }
@@ -78,7 +94,7 @@ class Callable extends StmtParent, Member, @callable {
    */
   string getMethodDescriptor() {
     exists(string return | return = this.getReturnType().getTypeDescriptor() |
-      result = "(" + descriptorUpTo(this.getNumberOfParameters()) + ")" + return
+      result = "(" + this.descriptorUpTo(this.getNumberOfParameters()) + ")" + return
     )
   }
 
@@ -86,19 +102,19 @@ class Callable extends StmtParent, Member, @callable {
     n = 0 and result = ""
     or
     exists(Parameter p | p = this.getParameter(n - 1) |
-      result = descriptorUpTo(n - 1) + p.getType().getTypeDescriptor()
+      result = this.descriptorUpTo(n - 1) + p.getType().getTypeDescriptor()
     )
   }
 
   /** Holds if this callable calls `target`. */
-  predicate calls(Callable target) { exists(getACallSite(target)) }
+  predicate calls(Callable target) { exists(this.getACallSite(target)) }
 
   /**
    * Holds if this callable calls `target`
    * using a `super(...)` constructor call.
    */
   predicate callsSuperConstructor(Constructor target) {
-    getACallSite(target) instanceof SuperConstructorInvocationStmt
+    this.getACallSite(target) instanceof SuperConstructorInvocationStmt
   }
 
   /**
@@ -106,14 +122,14 @@ class Callable extends StmtParent, Member, @callable {
    * using a `this(...)` constructor call.
    */
   predicate callsThis(Constructor target) {
-    getACallSite(target) instanceof ThisConstructorInvocationStmt
+    this.getACallSite(target) instanceof ThisConstructorInvocationStmt
   }
 
   /**
    * Holds if this callable calls `target`
    * using a `super` method call.
    */
-  predicate callsSuper(Method target) { getACallSite(target) instanceof SuperMethodAccess }
+  predicate callsSuper(Method target) { this.getACallSite(target) instanceof SuperMethodCall }
 
   /**
    * Holds if this callable calls `c` using
@@ -145,13 +161,13 @@ class Callable extends StmtParent, Member, @callable {
    * Holds if field `f` may be assigned a value
    * within the body of this callable.
    */
-  predicate writes(Field f) { f.getAnAccess().(LValue).getEnclosingCallable() = this }
+  predicate writes(Field f) { f.getAnAccess().(VarWrite).getEnclosingCallable() = this }
 
   /**
    * Holds if field `f` may be read
    * within the body of this callable.
    */
-  predicate reads(Field f) { f.getAnAccess().(RValue).getEnclosingCallable() = this }
+  predicate reads(Field f) { f.getAnAccess().(VarRead).getEnclosingCallable() = this }
 
   /**
    * Holds if field `f` may be either read or written
@@ -165,13 +181,13 @@ class Callable extends StmtParent, Member, @callable {
   Field getAnAccessedField() { this.accesses(result) }
 
   /** Gets the type of a formal parameter of this callable. */
-  Type getAParamType() { result = getParameterType(_) }
+  Type getAParamType() { result = this.getParameterType(_) }
 
   /** Holds if this callable does not have any formal parameters. */
-  predicate hasNoParameters() { not exists(getAParameter()) }
+  predicate hasNoParameters() { not exists(this.getAParameter()) }
 
   /** Gets the number of formal parameters of this callable. */
-  int getNumberOfParameters() { result = count(getAParameter()) }
+  int getNumberOfParameters() { result = count(this.getAParameter()) }
 
   /** Gets a formal parameter of this callable. */
   Parameter getAParameter() { result.getCallable() = this }
@@ -181,6 +197,9 @@ class Callable extends StmtParent, Member, @callable {
 
   /** Gets the type of the formal parameter at the specified (zero-based) position. */
   Type getParameterType(int n) { params(_, result, n, this, _) }
+
+  /** Gets the type of the formal parameter at the specified (zero-based) position. */
+  KotlinType getParameterKotlinType(int n) { paramsKotlinType(this.getParameter(n), result) }
 
   /**
    * Gets the signature of this callable, including its name and the types of all
@@ -205,7 +224,7 @@ class Callable extends StmtParent, Member, @callable {
    */
   pragma[nomagic]
   string paramsString() {
-    exists(int n | n = getNumberOfParameters() |
+    exists(int n | n = this.getNumberOfParameters() |
       n = 0 and result = "()"
       or
       n > 0 and result = "(" + this.paramUpTo(n - 1) + ")"
@@ -217,9 +236,9 @@ class Callable extends StmtParent, Member, @callable {
    * from left to right, up to (and including) the `n`-th parameter.
    */
   private string paramUpTo(int n) {
-    n = 0 and result = getParameterType(0).toString()
+    n = 0 and result = this.getParameterType(0).toString()
     or
-    n > 0 and result = paramUpTo(n - 1) + ", " + getParameterType(n)
+    n > 0 and result = this.paramUpTo(n - 1) + ", " + this.getParameterType(n)
   }
 
   /**
@@ -234,7 +253,7 @@ class Callable extends StmtParent, Member, @callable {
   Exception getAnException() { exceptions(result, _, this) }
 
   /** Gets an exception type that occurs in the `throws` clause of this callable. */
-  RefType getAThrownExceptionType() { result = getAnException().getType() }
+  RefType getAThrownExceptionType() { result = this.getAnException().getType() }
 
   /** Gets a call site that references this callable. */
   Call getAReference() { result.getCallee() = this }
@@ -265,6 +284,9 @@ class Callable extends StmtParent, Member, @callable {
   /** Holds if the last parameter of this callable is a varargs (variable arity) parameter. */
   predicate isVarargs() { this.getAParameter().isVarargs() }
 
+  /** Gets the index of this callable's varargs parameter, if any exists. */
+  int getVaragsParameterIndex() { this.getParameter(result).isVarargs() }
+
   /**
    * Gets the signature of this callable, where all types in the signature have a fully-qualified name.
    * The parameter types are only separated by a comma (without space). If this callable has
@@ -276,6 +298,106 @@ class Callable extends StmtParent, Member, @callable {
     constrs(this, _, result, _, _, _) or
     methods(this, _, result, _, _, _)
   }
+
+  /**
+   * Gets this callable's Kotlin proxy that supplies default parameter values, if one exists.
+   *
+   * For example, for the Kotlin declaration `fun f(x: Int, y: Int = 0, z: String = "1")`,
+   * this will get the synthetic proxy method that fills in the default values for `y` and `z`
+   * if not supplied, and to which the Kotlin extractor dispatches calls to `f` that are missing
+   * one or more parameter value. Similarly, constructors with one or more default parameter values
+   * have a corresponding constructor that fills in default values.
+   */
+  Callable getKotlinParameterDefaultsProxy() {
+    this.getDeclaringType() = result.getDeclaringType() and
+    exists(
+      int proxyNParams, int extraLeadingParams, int regularParamsStartIdx, RefType lastParamType
+    |
+      proxyNParams = result.getNumberOfParameters() and
+      extraLeadingParams = (proxyNParams - this.getNumberOfParameters()) - 2 and
+      extraLeadingParams >= 0 and
+      result.getParameterType(proxyNParams - 1) = lastParamType and
+      result.getParameterType(proxyNParams - 2).(PrimitiveType).hasName("int") and
+      (
+        this instanceof Constructor and
+        result instanceof Constructor and
+        extraLeadingParams = 0 and
+        regularParamsStartIdx = 0 and
+        lastParamType.hasQualifiedName("kotlin.jvm.internal", "DefaultConstructorMarker")
+        or
+        this instanceof Method and
+        result instanceof Method and
+        this.getName() + "$default" = result.getName() and
+        extraLeadingParams <= 1 and // 0 for static methods, 1 for instance methods
+        regularParamsStartIdx = extraLeadingParams and
+        lastParamType instanceof TypeObject
+      )
+    |
+      forall(int paramIdx | paramIdx in [regularParamsStartIdx .. proxyNParams - 3] |
+        this.getParameterType(paramIdx - extraLeadingParams).getErasure() =
+          eraseRaw(result.getParameterType(paramIdx))
+      )
+    )
+  }
+}
+
+/**
+ * Holds if the given type is public and, if it is a nested type, that all of
+ * its enclosing types are public as well.
+ */
+private predicate veryPublic(RefType t) {
+  t.isPublic() and
+  (
+    not t instanceof NestedType or
+    veryPublic(t.(NestedType).getEnclosingType())
+  )
+}
+
+/** A callable that is the same as its source declaration. */
+class SrcCallable extends Callable {
+  SrcCallable() { this.isSourceDeclaration() }
+
+  /**
+   * Holds if this callable is effectively public in the sense that it can be
+   * called from outside the codebase. This means either a `public` callable on
+   * a sufficiently public type or a `protected` callable on a sufficiently
+   * public non-`final` type.
+   */
+  predicate isEffectivelyPublic() {
+    exists(RefType t | t = this.getDeclaringType() |
+      this.isPublic() and veryPublic(t)
+      or
+      this.isProtected() and not t.isFinal() and veryPublic(t)
+    )
+    or
+    exists(SrcRefType tsub, Method m |
+      veryPublic(tsub) and
+      tsub.hasMethod(m, _) and
+      m.getSourceDeclaration() = this
+    |
+      this.isPublic()
+      or
+      this.isProtected() and not tsub.isFinal()
+    )
+  }
+
+  /**
+   * Holds if this callable is implicitly public in the sense that it can be the
+   * target of virtual dispatch by a call from outside the codebase.
+   */
+  predicate isImplicitlyPublic() {
+    this.isEffectivelyPublic()
+    or
+    exists(SrcMethod m |
+      m.(SrcCallable).isEffectivelyPublic() and
+      m.getAPossibleImplementationOfSrcMethod() = this
+    )
+  }
+}
+
+/** Gets the erasure of `t1` if it is a raw type, or `t1` itself otherwise. */
+private Type eraseRaw(Type t1) {
+  if t1 instanceof RawType then result = t1.getErasure() else result = t1
 }
 
 /** Holds if method `m1` overrides method `m2`. */
@@ -285,7 +407,20 @@ private predicate overrides(Method m1, Method m2) {
     or
     m2.isProtected()
     or
-    m2.isPackageProtected() and t1.getPackage() = t2.getPackage()
+    m2.isPackageProtected() and
+    pragma[only_bind_out](t1.getPackage()) = pragma[only_bind_out](t2.getPackage())
+  )
+}
+
+pragma[nomagic]
+private predicate overridesCandidateType(RefType tsup, string sig, RefType t, Method m) {
+  virtualMethodWithSignature(sig, t, m) and
+  t.extendsOrImplements(tsup)
+  or
+  exists(RefType mid |
+    overridesCandidateType(mid, sig, t, m) and
+    mid.extendsOrImplements(tsup) and
+    not virtualMethodWithSignature(sig, mid, _)
   )
 }
 
@@ -294,11 +429,10 @@ private predicate overrides(Method m1, Method m2) {
  * ignoring any access modifiers. Additionally, this predicate binds
  * `t1` to the type declaring `m1` and `t2` to the type declaring `m2`.
  */
-pragma[noopt]
+cached
 predicate overridesIgnoringAccess(Method m1, RefType t1, Method m2, RefType t2) {
   exists(string sig |
-    virtualMethodWithSignature(sig, t1, m1) and
-    t1.extendsOrImplements+(t2) and
+    overridesCandidateType(t2, sig, t1, m1) and
     virtualMethodWithSignature(sig, t2, m2)
   )
 }
@@ -318,14 +452,21 @@ private predicate potentialInterfaceImplementationWithSignature(string sig, RefT
   not t.isAbstract()
 }
 
-pragma[nomagic]
-private predicate implementsInterfaceMethod(SrcMethod impl, SrcMethod m) {
-  exists(RefType t, Interface i, Method minst, Method implinst |
-    m = minst.getSourceDeclaration() and
+pragma[noinline]
+private predicate isInterfaceSourceImplementation(Method minst, RefType t) {
+  exists(Interface i |
     i = minst.getDeclaringType() and
     t.extendsOrImplements+(i) and
-    t.isSourceDeclaration() and
+    t.isSourceDeclaration()
+  )
+}
+
+pragma[nomagic]
+private predicate implementsInterfaceMethod(SrcMethod impl, SrcMethod m) {
+  exists(RefType t, Method minst, Method implinst |
+    isInterfaceSourceImplementation(minst, t) and
     potentialInterfaceImplementationWithSignature(minst.getSignature(), t, implinst) and
+    m = minst.getSourceDeclaration() and
     impl = implinst.getSourceDeclaration()
   )
 }
@@ -385,21 +526,26 @@ class Method extends Callable, @method {
     this.getSourceDeclaration().getAPossibleImplementationOfSrcMethod() = result
   }
 
-  override MethodAccess getAReference() { result = Callable.super.getAReference() }
+  override MethodCall getAReference() { result = Callable.super.getAReference() }
 
   override predicate isPublic() {
     Callable.super.isPublic()
     or
     // JLS 9.4: Every method declaration in the body of an interface without an
     // access modifier is implicitly public.
-    getDeclaringType() instanceof Interface and
+    this.getDeclaringType() instanceof Interface and
     not this.isPrivate()
     or
     exists(FunctionalExpr func | func.asMethod() = this)
   }
 
   override predicate isAbstract() {
-    Callable.super.isAbstract()
+    // The combination `abstract default` isn't legal in Java,
+    // but it occurs when the Kotlin extractor records a default
+    // body, but the output class file in fact uses an abstract
+    // method and an associated static helper, which we don't
+    // extract as an implementation detail.
+    Callable.super.isAbstract() and not this.isDefault()
     or
     // JLS 9.4: An interface method lacking a `private`, `default`, or `static` modifier
     // is implicitly abstract.
@@ -413,7 +559,7 @@ class Method extends Callable, @method {
     Callable.super.isStrictfp()
     or
     // JLS 8.1.1.3, JLS 9.1.1.2
-    getDeclaringType().isStrictfp()
+    this.getDeclaringType().isStrictfp()
   }
 
   /**
@@ -421,8 +567,8 @@ class Method extends Callable, @method {
    * nor an initializer method, and hence could be inherited.
    */
   predicate isInheritable() {
-    not isPrivate() and
-    not (isStatic() and getDeclaringType() instanceof Interface) and
+    not this.isPrivate() and
+    not (this.isStatic() and this.getDeclaringType() instanceof Interface) and
     not this instanceof InitializerMethod
   }
 
@@ -430,13 +576,27 @@ class Method extends Callable, @method {
    * Holds if this method is neither private nor static, and hence
    * uses dynamic dispatch.
    */
-  predicate isVirtual() { not isPrivate() and not isStatic() }
+  predicate isVirtual() { not this.isPrivate() and not this.isStatic() }
 
   /** Holds if this method can be overridden. */
   predicate isOverridable() {
-    isVirtual() and
-    not isFinal() and
-    not getDeclaringType().isFinal()
+    this.isVirtual() and
+    not this.isFinal() and
+    not this.getDeclaringType().isFinal()
+  }
+
+  /** Holds if this method is a Kotlin local function. */
+  predicate isLocal() { ktLocalFunction(this) }
+
+  /**
+   * Gets the Kotlin name of this method, that is either the name of this method, or
+   * if `JvmName` annotation was applied to the declaration, then the original name.
+   */
+  string getKotlinName() {
+    ktFunctionOriginalNames(this, result)
+    or
+    not ktFunctionOriginalNames(this, _) and
+    result = this.getName()
   }
 
   override string getAPrimaryQlClass() { result = "Method" }
@@ -444,7 +604,7 @@ class Method extends Callable, @method {
 
 /** A method that is the same as its source declaration. */
 class SrcMethod extends Method {
-  SrcMethod() { methods(_, _, _, _, _, this) }
+  SrcMethod() { methods(this, _, _, _, _, this) }
 
   /**
    * All the methods that could possibly be called when this method
@@ -530,6 +690,9 @@ class Constructor extends Callable, @constructor {
   /** Holds if this is a default constructor, not explicitly declared in source code. */
   predicate isDefaultConstructor() { isDefConstr(this) }
 
+  /** Holds if this is a constructor without parameters. */
+  predicate isParameterless() { this.getNumberOfParameters() = 0 }
+
   override Constructor getSourceDeclaration() { constrs(this, _, _, _, _, result) }
 
   override string getSignature() { constrs(this, _, result, _, _, _) }
@@ -549,7 +712,7 @@ abstract class InitializerMethod extends Method { }
  * field initializations and static initializer blocks.
  */
 class StaticInitializer extends InitializerMethod {
-  StaticInitializer() { hasName("<clinit>") }
+  StaticInitializer() { this.hasName("<clinit>") }
 }
 
 /**
@@ -574,10 +737,17 @@ class FieldDeclaration extends ExprParent, @fielddecl, Annotatable {
   /** Gets the number of fields declared in this declaration. */
   int getNumField() { result = max(int idx | fieldDeclaredIn(_, this, idx) | idx) + 1 }
 
+  private string stringifyType() {
+    // Necessary because record fields are missing their type access.
+    if exists(this.getTypeAccess())
+    then result = this.getTypeAccess().toString()
+    else result = this.getAField().getType().toString()
+  }
+
   override string toString() {
-    if this.getNumField() = 0
-    then result = this.getTypeAccess() + " " + this.getField(0) + ";"
-    else result = this.getTypeAccess() + " " + this.getField(0) + ", ...;"
+    if this.getNumField() = 1
+    then result = this.stringifyType() + " " + this.getField(0) + ";"
+    else result = this.stringifyType() + " " + this.getField(0) + ", ...;"
   }
 
   override string getAPrimaryQlClass() { result = "FieldDeclaration" }
@@ -586,10 +756,13 @@ class FieldDeclaration extends ExprParent, @fielddecl, Annotatable {
 /** A class or instance field. */
 class Field extends Member, ExprParent, @field, Variable {
   /** Gets the declared type of this field. */
-  override Type getType() { fields(this, _, result, _, _) }
+  override Type getType() { fields(this, _, result, _) }
+
+  /** Gets the Kotlin type of this field. */
+  override KotlinType getKotlinType() { fieldsKotlinType(this, result) }
 
   /** Gets the type in which this field is declared. */
-  override RefType getDeclaringType() { fields(this, _, _, result, _) }
+  override RefType getDeclaringType() { fields(this, _, _, result) }
 
   /**
    * Gets the field declaration in which this field is declared.
@@ -608,28 +781,32 @@ class Field extends Member, ExprParent, @field, Variable {
       // (CodeQL models explicit initializer blocks as BlockStmt in initializer methods)
       exprStmt.getParent() = im.getBody()
     )
+    or
+    // Kotlin initializers are more general than Java's, in that they may refer to
+    // primary constructor parameters. This identifies a syntactic initializer, so
+    // `class A { val y = 1 }` is an initializer, as is `class B(x: Int) { val y = x }`,
+    // but `class C { var x: Int; init { x = 1 } }` is not, and neither is
+    // `class D { var x: Int; constructor(y: Int) { x = y } }`
+    exists(KtInitializerAssignExpr e |
+      e.getDest() = this.getAnAccess() and
+      e.getSource() = result
+    )
   }
 
   /**
-   * Gets the source declaration of this field.
-   *
-   * For fields that are members of a parameterized
-   * instance of a generic type, the source declaration is the
-   * corresponding field in the generic type.
-   *
-   * For all other fields, the source declaration is the field itself.
+   * DEPRECATED: The result is always `this`.
    */
-  Field getSourceDeclaration() { fields(this, _, _, _, result) }
+  deprecated Field getSourceDeclaration() { result = this }
 
-  /** Holds if this field is the same as its source declaration. */
-  predicate isSourceDeclaration() { this.getSourceDeclaration() = this }
+  /** DEPRECATED: This always holds. */
+  deprecated predicate isSourceDeclaration() { any() }
 
   override predicate isPublic() {
     Member.super.isPublic()
     or
     // JLS 9.3: Every field declaration in the body of an interface is
     // implicitly public, static, and final
-    getDeclaringType() instanceof Interface
+    this.getDeclaringType() instanceof Interface
   }
 
   override predicate isStatic() {
@@ -657,4 +834,64 @@ class Field extends Member, ExprParent, @field, Variable {
 /** An instance field. */
 class InstanceField extends Field {
   InstanceField() { not this.isStatic() }
+}
+
+/** A Kotlin property. */
+class Property extends Element, Modifiable, @kt_property {
+  /** Gets the getter method for this property, if any. */
+  Method getGetter() { ktPropertyGetters(this, result) }
+
+  /** Gets the setter method for this property, if any. */
+  Method getSetter() { ktPropertySetters(this, result) }
+
+  /** Gets the backing field for this property, if any. */
+  Field getBackingField() { ktPropertyBackingFields(this, result) }
+
+  override string getAPrimaryQlClass() { result = "Property" }
+}
+
+/** A Kotlin delegated property. */
+class DelegatedProperty extends Property {
+  Variable underlying;
+
+  DelegatedProperty() { ktPropertyDelegates(this, underlying) }
+
+  /** Holds if this delegated property is declared as a local variable. */
+  predicate isLocal() { underlying instanceof LocalVariableDecl }
+
+  /** Gets the underlying local variable or field to which this property is delegating the calls. */
+  Variable getDelegatee() { result = underlying }
+
+  override string getAPrimaryQlClass() { result = "DelegatedProperty" }
+}
+
+/** A Kotlin extension function. */
+class ExtensionMethod extends Method {
+  Type extendedType;
+  KotlinType extendedKotlinType;
+
+  ExtensionMethod() { ktExtensionFunctions(this, extendedType, extendedKotlinType) }
+
+  /** Gets the type being extended by this method. */
+  Type getExtendedType() { result = extendedType }
+
+  /** Gets the Kotlin type being extended by this method. */
+  KotlinType getExtendedKotlinType() { result = extendedKotlinType }
+
+  override string getAPrimaryQlClass() { result = "ExtensionMethod" }
+
+  /**
+   * Gets the index of the parameter that is the extension receiver. This is typically index 0. In case of `$default`
+   * extension methods that are defined as members, the index is 1. Index 0 is the dispatch receiver of the `$default`
+   * method.
+   */
+  int getExtensionReceiverParameterIndex() {
+    if
+      exists(Method src |
+        this = src.getKotlinParameterDefaultsProxy() and
+        src.getNumberOfParameters() = this.getNumberOfParameters() - 3 // 2 extra parameters + 1 dispatch receiver
+      )
+    then result = 1
+    else result = 0
+  }
 }

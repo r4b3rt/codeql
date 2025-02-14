@@ -72,7 +72,7 @@ class SensitiveProperty extends Property {
 /** A parameter to a library method that may hold a sensitive value. */
 class SensitiveLibraryParameter extends Parameter {
   SensitiveLibraryParameter() {
-    fromLibrary() and
+    this.fromLibrary() and
     exists(string s | this.getName().toLowerCase() = s | s.matches(suspicious()))
   }
 }
@@ -186,7 +186,7 @@ class AuthMethod extends SensitiveExecutionMethod {
 class SendingMethod extends SensitiveExecutionMethod {
   SendingMethod() {
     exists(string s | s.matches("%Socket") |
-      this.getDeclaringType().hasQualifiedName("System.Net.Sockets", s) and
+      this.getDeclaringType().hasFullyQualifiedName("System.Net.Sockets", s) and
       this.hasName("Send")
     )
   }

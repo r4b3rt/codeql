@@ -9,14 +9,13 @@
  * @id py/sql-injection
  * @tags security
  *       external/cwe/cwe-089
- *       external/owasp/owasp-a1
  */
 
 import python
-import semmle.python.security.dataflow.SqlInjection
-import DataFlow::PathGraph
+import semmle.python.security.dataflow.SqlInjectionQuery
+import SqlInjectionFlow::PathGraph
 
-from SqlInjection::Configuration config, DataFlow::PathNode source, DataFlow::PathNode sink
-where config.hasFlowPath(source, sink)
-select sink.getNode(), source, sink, "This SQL query depends on $@.", source.getNode(),
-  "a user-provided value"
+from SqlInjectionFlow::PathNode source, SqlInjectionFlow::PathNode sink
+where SqlInjectionFlow::flowPath(source, sink)
+select sink.getNode(), source, sink, "This SQL query depends on a $@.", source.getNode(),
+  "user-provided value"

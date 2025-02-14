@@ -147,7 +147,9 @@ module MembershipCandidate {
         child instanceof RegExpConstant or
         child instanceof RegExpAlt or
         child instanceof RegExpGroup
-      )
+      ) and
+      // exclude "length matches" that match every string
+      not this.getAChild*() instanceof RegExpDot
     }
 
     /**
@@ -165,6 +167,7 @@ module MembershipCandidate {
     EnumerationRegExp enumeration;
     boolean polarity;
 
+    pragma[nomagic]
     RegExpEnumerationCandidate() {
       exists(DataFlow::MethodCallNode mcn, DataFlow::Node base, string m, DataFlow::Node firstArg |
         (
@@ -190,7 +193,7 @@ module MembershipCandidate {
         or
         // u.match(/re/) or u.match("re")
         base = this and
-        m = "match" and
+        m = ["match", "matchAll"] and
         enumeration = RegExp::getRegExpFromNode(firstArg)
       )
     }
@@ -217,7 +220,8 @@ module MembershipCandidate {
    * A candidate that may be a property name of an object.
    */
   class ObjectPropertyNameMembershipCandidate extends MembershipCandidate::Range,
-    DataFlow::ValueNode {
+    DataFlow::ValueNode
+  {
     Expr test;
     Expr membersNode;
 
@@ -228,10 +232,10 @@ module MembershipCandidate {
         membersNode = inExpr.getRightOperand()
       )
       or
-      exists(MethodCallExpr hasOwn |
-        this = hasOwn.getArgument(0).flow() and
-        test = hasOwn and
-        hasOwn.calls(membersNode, "hasOwnProperty")
+      exists(HasOwnPropertyCall hasOwn |
+        this = hasOwn.getProperty() and
+        test = hasOwn.asExpr() and
+        membersNode = hasOwn.getObject().asExpr()
       )
     }
 

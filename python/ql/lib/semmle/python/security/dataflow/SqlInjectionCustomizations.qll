@@ -9,7 +9,6 @@ private import semmle.python.dataflow.new.DataFlow
 private import semmle.python.Concepts
 private import semmle.python.dataflow.new.RemoteFlowSources
 private import semmle.python.dataflow.new.BarrierGuards
-private import semmle.python.frameworks.SqlAlchemy
 
 /**
  * Provides default sources, sinks and sanitizers for detecting
@@ -33,14 +32,21 @@ module SqlInjection {
   abstract class Sanitizer extends DataFlow::Node { }
 
   /**
-   * A sanitizer guard for "SQL injection" vulnerabilities.
+   * DEPRECATED: Use `ActiveThreatModelSource` from Concepts instead!
    */
-  abstract class SanitizerGuard extends DataFlow::BarrierGuard { }
+  deprecated class RemoteFlowSourceAsSource = ActiveThreatModelSourceAsSource;
 
   /**
-   * A source of remote user input, considered as a flow source.
+   * An active threat-model source, considered as a flow source.
    */
-  class RemoteFlowSourceAsSource extends Source, RemoteFlowSource { }
+  private class ActiveThreatModelSourceAsSource extends Source, ActiveThreatModelSource { }
+
+  /**
+   * A SQL statement of a SQL construction, considered as a flow sink.
+   */
+  class SqlConstructionAsSink extends Sink {
+    SqlConstructionAsSink() { this = any(SqlConstruction c).getSql() }
+  }
 
   /**
    * A SQL statement of a SQL execution, considered as a flow sink.
@@ -50,14 +56,17 @@ module SqlInjection {
   }
 
   /**
-   * The text argument of a SQLAlchemy TextClause construction, considered as a flow sink.
+   * A comparison with a constant, considered as a sanitizer-guard.
    */
-  class TextArgAsSink extends Sink {
-    TextArgAsSink() { this = any(SqlAlchemy::TextClause::TextClauseConstruction tcc).getTextArg() }
-  }
+  class ConstCompareAsSanitizerGuard extends Sanitizer, ConstCompareBarrier { }
 
-  /**
-   * A comparison with a constant string, considered as a sanitizer-guard.
-   */
-  class StringConstCompareAsSanitizerGuard extends SanitizerGuard, StringConstCompare { }
+  /** DEPRECATED: Use ConstCompareAsSanitizerGuard instead. */
+  deprecated class StringConstCompareAsSanitizerGuard = ConstCompareAsSanitizerGuard;
+
+  private import semmle.python.frameworks.data.ModelsAsData
+
+  /** A sink for sql-injection from model data. */
+  private class DataAsSqlSink extends Sink {
+    DataAsSqlSink() { this = ModelOutput::getASinkNode("sql-injection").asSink() }
+  }
 }

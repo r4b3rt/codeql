@@ -31,10 +31,20 @@ predicate hasSubtype(RefType t, Type sub) {
   arraySubtype(t, sub) and t != sub
   or
   // Type parameter containment for parameterized types.
-  parContainmentSubtype(t, sub) and t != sub
+  parContainmentSubtype(t, sub)
   or
   // Type variables are subtypes of their upper bounds.
   typeVarSubtypeBound(t, sub) and t != sub
+}
+
+/**
+ * Holds if reference type `anc` is a direct or indirect supertype of `sub`, including itself.
+ */
+cached
+predicate hasDescendant(RefType anc, Type sub) {
+  anc = sub
+  or
+  exists(RefType mid | hasSubtype(anc, mid) and hasDescendant(mid, sub))
 }
 
 private predicate typeVarSubtypeBound(RefType t, TypeVariable tv) {
@@ -59,19 +69,23 @@ private predicate arraySubtype(Array sup, Array sub) {
  * )
  * ```
  * For performance several transformations are made. First, the `forex` is
- * written as a loop where `typeArgumentsContain(_, pt, psub, n)` encode that
- * the `forex` holds for `i in [0..n]`. Second, the relation is split into two
- * cases depending on whether `pt.getNumberOfTypeArguments()` is 1 or 2+, as
- * this allows us to unroll the loop and collapse the first two iterations. The
- * base case for `typeArgumentsContain` is therefore `n=1` and this allows an
- * improved join order implemented by `contains01`.
+ * written as a loop where `typePrefixContains(ppt, ppsub)` encode that
+ * `ppt` and `ppsub` are prefixes of `pt` and `ptsub` and that
+ * the `forex` holds for `i in [0..n-1]` where `n` is the length of the prefixes.
+ * Second, the recursive case that determines containment of length `n+1`
+ * prefixes is split into three cases depending on whether there is
+ * non-reflexive type parameter containment:
+ * - only in the length `n` prefix,
+ * - only in the `n`th position,
+ * - both in the length `n` prefix and the `n`th position.
  */
 
 private predicate parContainmentSubtype(ParameterizedType pt, ParameterizedType psub) {
-  pt != psub and
-  typeArgumentsContain(_, pt, psub, pt.getNumberOfTypeArguments() - 1)
-  or
-  typeArgumentsContain0(_, pt, psub)
+  exists(ParameterizedPrefix ppt, ParameterizedPrefix ppsub |
+    typePrefixContains(ppt, ppsub) and
+    ppt.equals(pt) and
+    ppsub.equals(psub)
+  )
 }
 
 /**
@@ -94,100 +108,121 @@ private RefType parameterisationTypeArgumentVarianceCand(
   varianceCandidate(t)
 }
 
-/**
- * Holds if every type argument of `s` (up to `n` with `n >= 1`) contains the
- * corresponding type argument of `t`. Both `s` and `t` are constrained to
- * being parameterizations of `g`.
- */
-pragma[nomagic]
-private predicate typeArgumentsContain(
-  GenericType g, ParameterizedType s, ParameterizedType t, int n
-) {
-  contains01(g, s, t) and n = 1
+private newtype TParameterizedPrefix =
+  TGenericType(GenericType g) or
+  TTypeParam(ParameterizedPrefix pp, RefType t) { prefixMatches(pp, t, _, _) }
+
+/** Holds if `pp` is a length `n` prefix of `pt`. */
+private predicate prefixMatches(ParameterizedPrefix pp, ParameterizedType pt, int n) {
+  pp = TGenericType(pt.getGenericType()) and n = 0
   or
-  contains(g, s, t, n) and
-  typeArgumentsContain(g, s, t, n - 1)
-}
-
-private predicate typeArgumentsContain0(
-  GenericType g, ParameterizedType sParm, ParameterizedType tParm
-) {
-  exists(RefType s, RefType t |
-    containsAux0(g, tParm, s, t) and
-    s = parameterisationTypeArgument(g, sParm, 0) and
-    s != t
+  exists(ParameterizedPrefix pp0, RefType t |
+    pp = TTypeParam(pp0, t) and prefixMatches(pp0, t, pt, n - 1)
   )
 }
 
 /**
- * Holds if the `n`-th type argument of `sParm` contain the `n`-th type
- * argument of `tParm` for both `n = 0` and `n = 1`, where both `sParm` and
- * `tParm` are parameterizations of the same generic type `g`.
- *
- * This is equivalent to
- * ```
- * contains(g, sParm, tParm, 0) and
- * contains(g, sParm, tParm, 1)
- * ```
- * except `contains` is restricted to only include `n >= 2`.
+ * Holds if `pp` is a length `n` prefix of `pt` and `t` is the `n`th type
+ * argument of `pt`.
  */
-private predicate contains01(GenericType g, ParameterizedType sParm, ParameterizedType tParm) {
-  exists(RefType s0, RefType t0, RefType s1, RefType t1 |
-    contains01Aux0(g, tParm, s0, t0, t1) and
-    contains01Aux1(g, sParm, s0, s1, t1)
-  )
-}
-
-pragma[nomagic]
-private predicate contains01Aux0(
-  GenericType g, ParameterizedType tParm, RefType s0, RefType t0, RefType t1
-) {
-  typeArgumentContains(g, s0, t0, 0) and
-  t0 = parameterisationTypeArgument(g, tParm, 0) and
-  t1 = parameterisationTypeArgument(g, tParm, 1)
-}
-
-pragma[nomagic]
-private predicate contains01Aux1(
-  GenericType g, ParameterizedType sParm, RefType s0, RefType s1, RefType t1
-) {
-  typeArgumentContains(g, s1, t1, 1) and
-  s0 = parameterisationTypeArgumentVarianceCand(g, sParm, 0) and
-  s1 = parameterisationTypeArgumentVarianceCand(g, sParm, 1)
-}
-
-pragma[nomagic]
-private predicate containsAux0(GenericType g, ParameterizedType tParm, RefType s, RefType t) {
-  typeArgumentContains(g, s, t, 0) and
-  t = parameterisationTypeArgument(g, tParm, 0) and
-  g.getNumberOfTypeParameters() = 1
+private predicate prefixMatches(ParameterizedPrefix pp, RefType t, ParameterizedType pt, int n) {
+  prefixMatches(pp, pt, n) and
+  t = pt.getTypeArgument(n)
 }
 
 /**
- * Holds if the `n`-th type argument of `sParm` contain the `n`-th type
- * argument of `tParm`, where both `sParm` and `tParm` are parameterizations of
- * the same generic type `g`. The index `n` is restricted to `n >= 2`, the
- * cases `n < 2` are handled by `contains01`.
- *
- * See JLS 4.5.1, Type Arguments of Parameterized Types.
+ * A prefix of a `ParameterizedType`. This encodes the corresponding
+ * `GenericType` and the first `n` type arguments where `n` is the prefix
+ * length.
  */
-private predicate contains(GenericType g, ParameterizedType sParm, ParameterizedType tParm, int n) {
-  exists(RefType s, RefType t |
-    containsAux(g, tParm, n, s, t) and
-    s = parameterisationTypeArgumentVarianceCand(g, sParm, n)
+private class ParameterizedPrefix extends TParameterizedPrefix {
+  string toString() { result = "ParameterizedPrefix" }
+
+  predicate equals(ParameterizedType pt) { prefixMatches(this, pt, pt.getNumberOfTypeArguments()) }
+
+  /** Holds if this prefix has length `n`, applies to `g`, and equals `TTypeParam(pp, t)`. */
+  predicate split(GenericType g, ParameterizedPrefix pp, RefType t, int n) {
+    this = TTypeParam(pp, t) and
+    (
+      pp = TGenericType(g) and n = 0
+      or
+      pp.split(g, _, _, n - 1)
+    )
+  }
+}
+
+/**
+ * Holds if every type argument of `pps` contains the corresponding type
+ * argument of `ppt`. Both `pps` and `ppt` are constrained to be equal-length
+ * prefixes of parameterizations of the same `GenericType`.
+ */
+pragma[nomagic]
+private predicate typePrefixContains(ParameterizedPrefix pps, ParameterizedPrefix ppt) {
+  // Let `pps = TTypeParam(pps0, s)` and `ppt = TTypeParam(ppt0, t)`.
+  // Case 1: pps0 = ppt0 and typeArgumentContains(_, s, t, _)
+  typePrefixContains_base(pps, ppt)
+  or
+  // Case 2: typePrefixContains(pps0, ppt0) and s = t
+  typePrefixContains_ext_eq(pps, ppt)
+  or
+  // Case 3: typePrefixContains(pps0, ppt0) and typeArgumentContains(_, s, t, _)
+  typePrefixContains_ext_neq(pps, ppt)
+}
+
+private predicate typePrefixContains_base(ParameterizedPrefix pps, ParameterizedPrefix ppt) {
+  exists(ParameterizedPrefix pp, RefType s |
+    pps = TTypeParam(pp, s) and
+    typePrefixContainsAux2(ppt, pp, s)
+  )
+}
+
+private predicate typePrefixContains_ext_eq(ParameterizedPrefix pps, ParameterizedPrefix ppt) {
+  exists(ParameterizedPrefix pps0, ParameterizedPrefix ppt0, RefType t |
+    typePrefixContains(pragma[only_bind_into](pps0), pragma[only_bind_into](ppt0)) and
+    pps = TTypeParam(pragma[only_bind_into](pps0), t) and
+    ppt = TTypeParam(ppt0, t)
+  )
+}
+
+private predicate typePrefixContains_ext_neq(ParameterizedPrefix pps, ParameterizedPrefix ppt) {
+  exists(ParameterizedPrefix ppt0, RefType s |
+    typePrefixContainsAux1(pps, ppt0, s) and
+    typePrefixContainsAux2(ppt, ppt0, s)
   )
 }
 
 pragma[nomagic]
-private predicate containsAux(GenericType g, ParameterizedType tParm, int n, RefType s, RefType t) {
-  typeArgumentContains(g, s, t, n) and
-  t = parameterisationTypeArgument(g, tParm, n) and
-  n >= 2
+private TTypeParam parameterizedPrefixWithWildcard(ParameterizedPrefix pps0, Wildcard s) {
+  result = TTypeParam(pps0, s)
+}
+
+pragma[nomagic]
+private predicate typePrefixContainsAux1(
+  ParameterizedPrefix pps, ParameterizedPrefix ppt0, RefType s
+) {
+  exists(ParameterizedPrefix pps0 |
+    typePrefixContains(pps0, ppt0) and
+    // `s instanceof Wildcard` is manual magic, implied by `typeArgumentContains(_, s, t, _)`
+    pps = parameterizedPrefixWithWildcard(pps0, s)
+  )
+}
+
+pragma[nomagic]
+private predicate typePrefixContainsAux2(
+  ParameterizedPrefix ppt, ParameterizedPrefix ppt0, RefType s
+) {
+  exists(GenericType g, int n, RefType t |
+    // Implies `ppt = TTypeParam(ppt0, t)`
+    ppt.split(g, ppt0, t, n) and
+    typeArgumentContains(g, s, t, n)
+  )
 }
 
 /**
  * Holds if the type argument `s` contains the type argument `t`, where both
  * type arguments occur as index `n` in an instantiation of `g`.
+ *
+ * The case `s = t` is not included.
  */
 pragma[noinline]
 private predicate typeArgumentContains(GenericType g, RefType s, RefType t, int n) {
@@ -205,18 +240,18 @@ private predicate typeArgumentContainsAux2(GenericType g, RefType s, RefType t, 
  * Holds if the type argument `s` contains the type argument `t`, where both
  * type arguments occur as index `n` in some parameterized types.
  *
+ * The case `s = t` is not included.
+ *
  * See JLS 4.5.1, Type Arguments of Parameterized Types.
  */
 private predicate typeArgumentContainsAux1(RefType s, RefType t, int n) {
-  exists(int i |
-    s = parameterisationTypeArgumentVarianceCand(_, _, i) and
-    t = parameterisationTypeArgument(_, _, n) and
-    i <= n and
-    n <= i
-  |
+  s = parameterisationTypeArgumentVarianceCand(_, _, pragma[only_bind_into](n)) and
+  t = parameterisationTypeArgument(_, _, pragma[only_bind_into](n)) and
+  s != t and
+  (
     exists(RefType tUpperBound | tUpperBound = t.(Wildcard).getUpperBound().getType() |
       // ? extends T <= ? extends S if T <: S
-      hasSubtypeStar(s.(Wildcard).getUpperBound().getType(), tUpperBound)
+      hasSubtypeStar1(s.(Wildcard).getUpperBound().getType(), tUpperBound)
       or
       // ? extends T <= ?
       s.(Wildcard).isUnconstrained()
@@ -224,7 +259,7 @@ private predicate typeArgumentContainsAux1(RefType s, RefType t, int n) {
     or
     exists(RefType tLowerBound | tLowerBound = t.(Wildcard).getLowerBound().getType() |
       // ? super T <= ? super S if s <: T
-      hasSubtypeStar(tLowerBound, s.(Wildcard).getLowerBound().getType())
+      hasSubtypeStar2(tLowerBound, s.(Wildcard).getLowerBound().getType())
       or
       // ? super T <= ?
       s.(Wildcard).isUnconstrained()
@@ -233,14 +268,14 @@ private predicate typeArgumentContainsAux1(RefType s, RefType t, int n) {
       wildcardExtendsObject(s)
     )
     or
-    // T <= T
-    s = t
-    or
     // T <= ? extends T
-    hasSubtypeStar(s.(Wildcard).getUpperBound().getType(), t)
+    hasSubtypeStar1(s.(Wildcard).getUpperBound().getType(), t)
     or
     // T <= ? super T
-    hasSubtypeStar(t, s.(Wildcard).getLowerBound().getType())
+    hasSubtypeStar2(t, s.(Wildcard).getLowerBound().getType())
+    // or
+    // T <= T
+    // but this case is handled directly in `typePrefixContains`
   )
 }
 
@@ -249,12 +284,38 @@ private predicate wildcardExtendsObject(Wildcard wc) {
   wc.getUpperBound().getType() instanceof TypeObject
 }
 
-private predicate hasSubtypeStar(RefType t, RefType sub) {
-  sub = t
+// manual magic for `hasSubtypeStar1`
+private predicate getAWildcardUpperBound(RefType t) {
+  t = any(Wildcard w).getUpperBound().getType()
+}
+
+// manual magic for `hasSubtypeStar2`
+private predicate getAWildcardLowerBound(RefType t) {
+  t = any(Wildcard w).getLowerBound().getType()
+}
+
+/**
+ * Holds if `hasSubtype*(t, sub)`, but manual-magic'ed with `getAWildcardUpperBound(t)`.
+ */
+pragma[nomagic]
+private predicate hasSubtypeStar1(RefType t, RefType sub) {
+  sub = t and getAWildcardUpperBound(t)
   or
-  hasSubtype(t, sub)
+  hasSubtype(t, sub) and getAWildcardUpperBound(t)
   or
-  exists(RefType mid | hasSubtypeStar(t, mid) and hasSubtype(mid, sub))
+  exists(RefType mid | hasSubtypeStar1(t, mid) and hasSubtype(mid, sub))
+}
+
+/**
+ * Holds if `hasSubtype*(t, sub)`, but manual-magic'ed with `getAWildcardLowerBound(sub)`.
+ */
+pragma[nomagic]
+private predicate hasSubtypeStar2(RefType t, RefType sub) {
+  sub = t and getAWildcardLowerBound(sub)
+  or
+  hasSubtype(t, sub) and getAWildcardLowerBound(sub)
+  or
+  exists(RefType mid | hasSubtype(t, mid) and hasSubtypeStar2(mid, sub))
 }
 
 /** Holds if type `t` declares member `m`. */
@@ -263,7 +324,7 @@ predicate declaresMember(Type t, @member m) {
   or
   constrs(m, _, _, _, t, _)
   or
-  fields(m, _, _, t, _)
+  fields(m, _, _, t)
   or
   enclInReftype(m, t) and
   // Since the type `@member` in the dbscheme includes all `@reftype`s,
@@ -328,10 +389,7 @@ class Array extends RefType, @array {
  */
 class RefType extends Type, Annotatable, Modifiable, @reftype {
   /** Gets the package in which this type is declared. */
-  Package getPackage() {
-    classes(this, _, result, _) or
-    interfaces(this, _, result, _)
-  }
+  Package getPackage() { classes_or_interfaces(this, _, result, _) }
 
   /** Gets the type in which this reference type is enclosed, if any. */
   RefType getEnclosingType() { enclInReftype(this, result) }
@@ -348,11 +406,21 @@ class RefType extends Type, Annotatable, Modifiable, @reftype {
   /** Gets a direct subtype of this type. */
   RefType getASubtype() { hasSubtype(this, result) }
 
+  /** Gets a direct or indirect descendant of this type, including itself. */
+  RefType getADescendant() { hasDescendant(this, result) }
+
   /** Gets a direct supertype of this type. */
   RefType getASupertype() { hasSubtype(result, this) }
 
   /** Gets a direct or indirect supertype of this type, including itself. */
-  RefType getAnAncestor() { hasSubtype*(result, this) }
+  RefType getAnAncestor() { hasDescendant(result, this) }
+
+  /**
+   * Gets a direct or indirect supertype of this type.
+   * This does not include itself, unless this type is part of a cycle
+   * in the type hierarchy.
+   */
+  RefType getAStrictAncestor() { result = this.getASupertype().getAnAncestor() }
 
   /**
    * Gets the source declaration of a direct supertype of this type, excluding itself.
@@ -379,7 +447,7 @@ class RefType extends Type, Annotatable, Modifiable, @reftype {
   }
 
   /** Holds if this type declares any members. */
-  predicate hasMember() { exists(getAMember()) }
+  predicate hasMember() { exists(this.getAMember()) }
 
   /** Gets a member declared in this type. */
   Member getAMember() { this = result.getDeclaringType() }
@@ -511,7 +579,7 @@ class RefType extends Type, Annotatable, Modifiable, @reftype {
       this.getSourceDeclaration().inherits(f)
     )
     or
-    this.hasMethod(m.(Method), _)
+    this.hasMethod(m, _)
   }
 
   /** Holds if this is a top-level type, which is not nested inside any other types. */
@@ -524,7 +592,7 @@ class RefType extends Type, Annotatable, Modifiable, @reftype {
    * to the name of the enclosing type, which might be a nested type as well.
    */
   predicate hasQualifiedName(string package, string type) {
-    this.getPackage().hasName(package) and type = this.nestedName()
+    this.getPackage().hasName(package) and type = this.getNestedName()
   }
 
   /**
@@ -533,7 +601,7 @@ class RefType extends Type, Annotatable, Modifiable, @reftype {
   override string getTypeDescriptor() {
     result =
       "L" + this.getPackage().getName().replaceAll(".", "/") + "/" +
-        this.getSourceDeclaration().nestedName() + ";"
+        this.getSourceDeclaration().getNestedName() + ";"
   }
 
   /**
@@ -545,8 +613,10 @@ class RefType extends Type, Annotatable, Modifiable, @reftype {
    * `java.lang.Thread$State`.
    */
   string getQualifiedName() {
-    exists(string pkgName | pkgName = getPackage().getName() |
-      if pkgName = "" then result = nestedName() else result = pkgName + "." + nestedName()
+    exists(string pkgName | pkgName = this.getPackage().getName() |
+      if pkgName = ""
+      then result = this.getNestedName()
+      else result = pkgName + "." + this.getNestedName()
     )
   }
 
@@ -557,11 +627,14 @@ class RefType extends Type, Annotatable, Modifiable, @reftype {
    * Otherwise the name of the nested type is prefixed with a `$` and appended to
    * the name of the enclosing type, which might be a nested type as well.
    */
-  string nestedName() {
+  string getNestedName() {
     not this instanceof NestedType and result = this.getName()
     or
-    this.(NestedType).getEnclosingType().nestedName() + "$" + this.getName() = result
+    this.(NestedType).getEnclosingType().getNestedName() + "$" + this.getName() = result
   }
+
+  /** DEPRECATED: Alias for `getNestedName`. */
+  deprecated string nestedName() { result = this.getNestedName() }
 
   /**
    * Gets the source declaration of this type.
@@ -602,17 +675,25 @@ class RefType extends Type, Annotatable, Modifiable, @reftype {
   }
 }
 
+/**
+ * An `ErrorType` is generated when CodeQL is unable to correctly
+ * extract a type.
+ */
+class ErrorType extends RefType, @errortype {
+  override string getAPrimaryQlClass() { result = "ErrorType" }
+}
+
 /** A type that is the same as its source declaration. */
 class SrcRefType extends RefType {
   SrcRefType() { this.isSourceDeclaration() }
 }
 
 /** A class declaration. */
-class Class extends ClassOrInterface, @class {
-  /** Holds if this class is an anonymous class. */
-  predicate isAnonymous() { isAnonymClass(this, _) }
+class Class extends ClassOrInterface {
+  Class() { not isInterface(this) }
 
-  override RefType getSourceDeclaration() { classes(this, _, _, result) }
+  /** Holds if this class is an anonymous class. */
+  predicate isAnonymous() { isAnonymClass(this.getSourceDeclaration(), _) }
 
   /**
    * Gets an annotation that applies to this class.
@@ -631,7 +712,36 @@ class Class extends ClassOrInterface, @class {
     )
   }
 
+  /**
+   * Holds if this class is a Kotlin "file class", e.g. the class FooKt
+   * for top-level entities in Foo.kt.
+   */
+  predicate isFileClass() { file_class(this) }
+
   override string getAPrimaryQlClass() { result = "Class" }
+}
+
+/** A Kotlin `object`. */
+class ClassObject extends Class {
+  ClassObject() { class_object(this, _) }
+
+  /** Gets the instance variable that implements this `object`. */
+  Field getInstance() { class_object(this, result) }
+}
+
+/** A Kotlin `companion object`. */
+class CompanionObject extends Class {
+  CompanionObject() { type_companion_object(_, _, this) }
+
+  /** Gets the instance variable that implements this `companion object`. */
+  Field getInstance() { type_companion_object(_, result, this) }
+}
+
+/**
+ * A Kotlin data class declaration.
+ */
+class DataClass extends Class {
+  DataClass() { ktDataClasses(this) }
 }
 
 /**
@@ -639,13 +749,20 @@ class Class extends ClassOrInterface, @class {
  */
 class Record extends Class {
   Record() { isRecord(this) }
+
+  /**
+   * Gets the canonical constructor of this record.
+   */
+  Constructor getCanonicalConstructor() {
+    result = this.getAConstructor() and isCanonicalConstr(result)
+  }
 }
 
 /** An intersection type. */
-class IntersectionType extends RefType, @class {
+class IntersectionType extends RefType, @classorinterface {
   IntersectionType() {
     exists(string shortname |
-      classes(this, shortname, _, _) and
+      classes_or_interfaces(this, shortname, _, _) and
       shortname.matches("% & ...")
     )
   }
@@ -656,7 +773,7 @@ class IntersectionType extends RefType, @class {
 
   /** Gets a textual representation of this type that includes all the intersected types. */
   string getLongName() {
-    result = superType().toString() + concat(" & " + superInterface().toString())
+    result = this.superType().toString() + concat(" & " + this.superInterface().toString())
   }
 
   /** Gets the first bound of this intersection type. */
@@ -690,7 +807,8 @@ class AnonymousClass extends NestedClass {
   override string getTypeDescriptor() {
     exists(RefType parent | parent = this.getEnclosingType() |
       exists(int num |
-        num = 1 + count(AnonymousClass other | other.rankInParent(parent) < rankInParent(parent))
+        num =
+          1 + count(AnonymousClass other | other.rankInParent(parent) < this.rankInParent(parent))
       |
         exists(string parentWithSemi | parentWithSemi = parent.getTypeDescriptor() |
           result = parentWithSemi.prefix(parentWithSemi.length() - 1) + "$" + num + ";"
@@ -700,10 +818,15 @@ class AnonymousClass extends NestedClass {
   }
 
   /** Gets the class instance expression where this anonymous class occurs. */
-  ClassInstanceExpr getClassInstanceExpr() { isAnonymClass(this, result) }
+  ClassInstanceExpr getClassInstanceExpr() { isAnonymClass(this.getSourceDeclaration(), result) }
 
   override string toString() {
-    result = "new " + this.getClassInstanceExpr().getTypeName() + "(...) { ... }"
+    // Include super.toString, i.e. the name given in the database, because for Kotlin anonymous
+    // classes we can get specialisations of anonymous generic types, and this will supply the
+    // trailing type arguments.
+    result =
+      "new " + pragma[only_bind_out](this.getClassInstanceExpr().getTypeName()).toString() +
+        "(...) { ... }" + super.toString()
   }
 
   /**
@@ -724,12 +847,6 @@ class LocalClassOrInterface extends NestedType, ClassOrInterface {
   /** Gets the statement that declares this local class. */
   LocalTypeDeclStmt getLocalTypeDeclStmt() { isLocalClassOrInterface(this, result) }
 
-  /**
-   * DEPRECATED: renamed `getLocalTypeDeclStmt` to reflect the fact that
-   * as of Java 16 interfaces can also be declared locally.
-   */
-  deprecated LocalTypeDeclStmt getLocalClassDeclStmt() { result = this.getLocalTypeDeclStmt() }
-
   override string getAPrimaryQlClass() { result = "LocalClassOrInterface" }
 }
 
@@ -744,7 +861,7 @@ class LocalClass extends LocalClassOrInterface, NestedClass {
 class TopLevelType extends RefType {
   TopLevelType() {
     not enclInReftype(this, _) and
-    (this instanceof Class or this instanceof Interface)
+    this instanceof ClassOrInterface
   }
 }
 
@@ -760,8 +877,8 @@ class NestedType extends RefType {
 
   /** Gets the nesting depth of this nested type. Top-level types have nesting depth 0. */
   int getNestingDepth() {
-    if getEnclosingType() instanceof NestedType
-    then result = getEnclosingType().(NestedType).getNestingDepth() + 1
+    if this.getEnclosingType() instanceof NestedType
+    then result = this.getEnclosingType().(NestedType).getNestingDepth() + 1
     else result = 1
   }
 
@@ -776,7 +893,7 @@ class NestedType extends RefType {
     super.isStrictfp()
     or
     // JLS 8.1.1.3, JLS 9.1.1.2
-    getEnclosingType().isStrictfp()
+    this.getEnclosingType().isStrictfp()
   }
 
   override predicate isStatic() {
@@ -842,8 +959,8 @@ class InnerClass extends NestedClass {
 }
 
 /** An interface. */
-class Interface extends ClassOrInterface, @interface {
-  override RefType getSourceDeclaration() { interfaces(this, _, _, result) }
+class Interface extends ClassOrInterface {
+  Interface() { isInterface(this) }
 
   override predicate isAbstract() {
     // JLS 9.1.1.1: "Every interface is implicitly abstract"
@@ -855,15 +972,26 @@ class Interface extends ClassOrInterface, @interface {
 
 /** A class or interface. */
 class ClassOrInterface extends RefType, @classorinterface {
+  override RefType getSourceDeclaration() { classes_or_interfaces(this, _, _, result) }
+
   /** Holds if this class or interface is local. */
-  predicate isLocal() { isLocalClassOrInterface(this, _) }
+  predicate isLocal() { isLocalClassOrInterface(this.getSourceDeclaration(), _) }
 
   /** Holds if this class or interface is package protected, that is, neither public nor private nor protected. */
   predicate isPackageProtected() {
-    not isPrivate() and
-    not isProtected() and
-    not isPublic()
+    not this.isPrivate() and
+    not this.isProtected() and
+    not this.isPublic()
   }
+
+  /** Gets a permitted subtype in case this class or interface is a sealed class (Java 17 feature). */
+  ClassOrInterface getAPermittedSubtype() { permits(this, result) }
+
+  /** Holds if this class or interface is explicitly or implicitly a sealed class (Java 17 feature). */
+  predicate isSealed() { exists(this.getAPermittedSubtype()) }
+
+  /** Get the companion object of this class or interface, if any. */
+  CompanionObject getCompanionObject() { type_companion_object(this, _, result) }
 }
 
 private string getAPublicObjectMethodSignature() {
@@ -874,6 +1002,17 @@ private string getAPublicObjectMethodSignature() {
   )
 }
 
+pragma[nomagic]
+private predicate interfaceInheritsOverridingNonAbstractMethod(Interface interface, Method m) {
+  interface.inherits(m) and
+  not m.isAbstract() and
+  m.overrides(_)
+}
+
+bindingset[m]
+pragma[inline_late]
+private Method getAnOverridden(Method m) { m.overrides(result) }
+
 private Method getAnAbstractMethod(Interface interface) {
   interface.inherits(result) and
   result.isAbstract() and
@@ -882,9 +1021,8 @@ private Method getAnAbstractMethod(Interface interface) {
   // Make sure that there is no other non-abstract method
   // (e.g. `default`) which overrides the abstract one
   not exists(Method m |
-    interface.inherits(m) and
-    not m.isAbstract() and
-    m.overrides(result)
+    interfaceInheritsOverridingNonAbstractMethod(interface, m) and
+    result = getAnOverridden(m)
   )
 }
 
@@ -912,7 +1050,9 @@ class FunctionalInterface extends Interface {
  * and `double`.
  */
 class PrimitiveType extends Type, @primitive {
-  PrimitiveType() { this.getName().regexpMatch("float|double|int|boolean|short|byte|char|long") }
+  PrimitiveType() {
+    this.getName() = ["float", "double", "int", "boolean", "short", "byte", "char", "long"]
+  }
 
   /** Gets the boxed type corresponding to this primitive type. */
   BoxedType getBoxedType() { result.getPrimitiveType() = this }
@@ -948,16 +1088,34 @@ class PrimitiveType extends Type, @primitive {
    * require an explicit cast.
    */
   Literal getADefaultValue() {
-    getName() = "boolean" and result.getLiteral() = "false"
+    this.getName() = "boolean" and result.getLiteral() = "false"
     or
-    getName() = "char" and
+    this.getName() = "char" and
     (result.getLiteral() = "'\\0'" or result.getLiteral() = "'\\u0000'")
     or
-    getName().regexpMatch("(float|double|int|short|byte|long)") and
+    this.getName().regexpMatch("(float|double|int|short|byte|long)") and
     result.getLiteral().regexpMatch("0(\\.0)?+[lLfFdD]?+")
   }
 
   override string getAPrimaryQlClass() { result = "PrimitiveType" }
+}
+
+private int getByteSize(PrimitiveType t) {
+  t.hasName("boolean") and result = 1
+  or
+  t.hasName("byte") and result = 1
+  or
+  t.hasName("char") and result = 2
+  or
+  t.hasName("short") and result = 2
+  or
+  t.hasName("int") and result = 4
+  or
+  t.hasName("float") and result = 4
+  or
+  t.hasName("long") and result = 8
+  or
+  t.hasName("double") and result = 8
 }
 
 /** The type of the `null` literal. */
@@ -1037,17 +1195,15 @@ class EnumType extends Class {
   EnumType() { isEnumType(this) }
 
   /** Gets the enum constant with the specified name. */
-  EnumConstant getEnumConstant(string name) {
-    fields(result, _, _, this, _) and result.hasName(name)
-  }
+  EnumConstant getEnumConstant(string name) { fields(result, _, _, this) and result.hasName(name) }
 
   /** Gets an enum constant declared in this enum type. */
-  EnumConstant getAnEnumConstant() { fields(result, _, _, this, _) }
+  EnumConstant getAnEnumConstant() { fields(result, _, _, this) }
 
   override predicate isFinal() {
     // JLS 8.9: An enum declaration is implicitly `final` unless it contains
     // at least one enum constant that has a class body.
-    not getAnEnumConstant().getAnAssignedValue().getType() instanceof AnonymousClass
+    not this.getAnEnumConstant().getAnAssignedValue().getType() instanceof AnonymousClass
   }
 }
 
@@ -1090,8 +1246,8 @@ private Type erase(Type t) {
 }
 
 /**
- * Is there a common (reflexive, transitive) subtype of the erasures of
- * types `t1` and `t2`?
+ * Holds if there is a common (reflexive, transitive) subtype of the erasures of
+ * types `t1` and `t2`.
  *
  * If there is no such common subtype, then the two types are disjoint.
  * However, the converse is not true; for example, the parameterized types
@@ -1109,9 +1265,29 @@ predicate haveIntersection(RefType t1, RefType t2) {
 }
 
 /**
+ * Holds if there is no common (reflexive, transitive) subtype of the erasures
+ * of types `t1` and `t2`.
+ *
+ * If there is no such common subtype, then the two types are disjoint.
+ * However, the converse is not true; for example, the parameterized types
+ * `List<Integer>` and `Collection<String>` are disjoint,
+ * but their erasures (`List` and `Collection`, respectively)
+ * do have common subtypes (such as `List` itself).
+ *
+ * For the definition of the notion of *erasure* see JLS v8, section 4.6 (Type Erasure).
+ */
+bindingset[t1, t2]
+predicate notHaveIntersection(RefType t1, RefType t2) {
+  exists(RefType e1, RefType e2 | e1 = erase(t1) and e2 = erase(t2) |
+    not erasedHaveIntersection(e1, e2)
+  )
+}
+
+/**
  * Holds if there is a common (reflexive, transitive) subtype of the erased
  * types `t1` and `t2`.
  */
+pragma[nomagic]
 predicate erasedHaveIntersection(RefType t1, RefType t2) {
   exists(SrcRefType commonSub |
     commonSub.getASourceSupertype*() = t1 and commonSub.getASourceSupertype*() = t2
@@ -1120,14 +1296,23 @@ predicate erasedHaveIntersection(RefType t1, RefType t2) {
   t2 = erase(_)
 }
 
-/** An integral type, which may be either a primitive or a boxed type. */
+/**
+ * An integral type, which may be either a primitive or a boxed type.
+ * This includes the types `char` and `Character`.
+ */
 class IntegralType extends Type {
   IntegralType() {
     exists(string name |
-      name = this.(PrimitiveType).getName() or name = this.(BoxedType).getPrimitiveType().getName()
+      name = [this.(PrimitiveType).getName(), this.(BoxedType).getPrimitiveType().getName()]
     |
-      name.regexpMatch("byte|char|short|int|long")
+      name = ["byte", "char", "short", "int", "long"]
     )
+  }
+
+  /** Gets the size in bytes of this numeric type. */
+  final int getByteSize() {
+    result = getByteSize(this) or
+    result = getByteSize(this.(BoxedType).getPrimitiveType())
   }
 }
 
@@ -1135,7 +1320,7 @@ class IntegralType extends Type {
 class BooleanType extends Type {
   BooleanType() {
     exists(string name |
-      name = this.(PrimitiveType).getName() or name = this.(BoxedType).getPrimitiveType().getName()
+      name = [this.(PrimitiveType).getName(), this.(BoxedType).getPrimitiveType().getName()]
     |
       name = "boolean"
     )
@@ -1146,9 +1331,20 @@ class BooleanType extends Type {
 class CharacterType extends Type {
   CharacterType() {
     exists(string name |
-      name = this.(PrimitiveType).getName() or name = this.(BoxedType).getPrimitiveType().getName()
+      name = [this.(PrimitiveType).getName(), this.(BoxedType).getPrimitiveType().getName()]
     |
       name = "char"
+    )
+  }
+}
+
+/** A numeric type, including both primitive and boxed types. */
+class NumericType extends Type {
+  NumericType() {
+    exists(string name |
+      name = [this.(PrimitiveType).getName(), this.(BoxedType).getPrimitiveType().getName()]
+    |
+      name = ["byte", "short", "int", "long", "double", "float"]
     )
   }
 }
@@ -1157,9 +1353,9 @@ class CharacterType extends Type {
 class NumericOrCharType extends Type {
   NumericOrCharType() {
     exists(string name |
-      name = this.(PrimitiveType).getName() or name = this.(BoxedType).getPrimitiveType().getName()
+      name = [this.(PrimitiveType).getName(), this.(BoxedType).getPrimitiveType().getName()]
     |
-      name.regexpMatch("byte|char|short|int|long|double|float")
+      name = ["byte", "char", "short", "int", "long", "double", "float"]
     )
   }
 }
@@ -1168,9 +1364,9 @@ class NumericOrCharType extends Type {
 class FloatingPointType extends Type {
   FloatingPointType() {
     exists(string name |
-      name = this.(PrimitiveType).getName() or name = this.(BoxedType).getPrimitiveType().getName()
+      name = [this.(PrimitiveType).getName(), this.(BoxedType).getPrimitiveType().getName()]
     |
-      name.regexpMatch("float|double")
+      name = ["float", "double"]
     )
   }
 }

@@ -10,14 +10,14 @@
  * @id js/stack-trace-exposure
  * @tags security
  *       external/cwe/cwe-209
+ *       external/cwe/cwe-497
  */
 
 import javascript
 import semmle.javascript.security.dataflow.StackTraceExposureQuery
-import DataFlow::PathGraph
+import StackTraceExposureFlow::PathGraph
 
-from Configuration cfg, DataFlow::PathNode source, DataFlow::PathNode sink
-where cfg.hasFlowPath(source, sink)
-select sink.getNode(), source, sink,
-  "Stack trace information from $@ may be exposed to an external user here.", source.getNode(),
-  "here"
+from StackTraceExposureFlow::PathNode source, StackTraceExposureFlow::PathNode sink
+where StackTraceExposureFlow::flowPath(source, sink)
+select sink.getNode(), source, sink, "This information exposed to the user depends on $@.",
+  source.getNode(), "stack trace information"

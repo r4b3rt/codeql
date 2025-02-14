@@ -7,8 +7,8 @@ import semmle.code.cpp.Declaration
 private import semmle.code.cpp.internal.ResolveClass
 
 /**
- * A C/C++ function parameter or catch block parameter. For example the
- * function parameter `p` and the catch block parameter `e` in the following
+ * A C/C++ function parameter, catch block parameter, or requires expression parameter.
+ * For example the function parameter `p` and the catch block parameter `e` in the following
  * code:
  * ```
  * void myFunction(int p) {
@@ -20,8 +20,8 @@ private import semmle.code.cpp.internal.ResolveClass
  * }
  * ```
  *
- * For catch block parameters, there is a one-to-one correspondence between
- * the `Parameter` and its `ParameterDeclarationEntry`.
+ * For catch block parameters and expression , there is a one-to-one
+ * correspondence between the `Parameter` and its `VariableDeclarationEntry`.
  *
  * For function parameters, there is a one-to-many relationship between
  * `Parameter` and `ParameterDeclarationEntry`, because one function can
@@ -40,12 +40,12 @@ class Parameter extends LocalScopeVariable, @parameter {
    */
   override string getName() {
     exists(VariableDeclarationEntry vde |
-      vde = getANamedDeclarationEntry() and result = vde.getName()
+      vde = this.getANamedDeclarationEntry() and result = vde.getName()
     |
-      vde.isDefinition() or not getANamedDeclarationEntry().isDefinition()
+      vde.isDefinition() or not this.getANamedDeclarationEntry().isDefinition()
     )
     or
-    not exists(getANamedDeclarationEntry()) and
+    not exists(this.getANamedDeclarationEntry()) and
     result = "(unnamed parameter " + this.getIndex().toString() + ")"
   }
 
@@ -58,8 +58,12 @@ class Parameter extends LocalScopeVariable, @parameter {
    */
   string getTypedName() {
     exists(string typeString, string nameString |
-      (if exists(getType().getName()) then typeString = getType().getName() else typeString = "") and
-      (if exists(getName()) then nameString = getName() else nameString = "") and
+      (
+        if exists(this.getType().getName())
+        then typeString = this.getType().getName()
+        else typeString = ""
+      ) and
+      (if exists(this.getName()) then nameString = this.getName() else nameString = "") and
       (
         if typeString != "" and nameString != ""
         then result = typeString + " " + nameString
@@ -69,7 +73,8 @@ class Parameter extends LocalScopeVariable, @parameter {
   }
 
   private VariableDeclarationEntry getANamedDeclarationEntry() {
-    result = getAnEffectiveDeclarationEntry() and result.getName() != ""
+    result = this.getAnEffectiveDeclarationEntry() and
+    exists(string name | var_decls(unresolveElement(result), _, _, name, _) | name != "")
   }
 
   /**
@@ -82,29 +87,13 @@ class Parameter extends LocalScopeVariable, @parameter {
    * own).
    */
   private VariableDeclarationEntry getAnEffectiveDeclarationEntry() {
-    if getFunction().isConstructedFrom(_)
+    if this.getFunction().isConstructedFrom(_)
     then
       exists(Function prototypeInstantiation |
-        prototypeInstantiation.getParameter(getIndex()) = result.getVariable() and
-        getFunction().isConstructedFrom(prototypeInstantiation)
+        prototypeInstantiation.getParameter(this.getIndex()) = result.getVariable() and
+        this.getFunction().isConstructedFrom(prototypeInstantiation)
       )
-    else result = getADeclarationEntry()
-  }
-
-  /**
-   * Gets the name of this parameter in the given block (which should be
-   * the body of a function with which the parameter is associated).
-   *
-   * DEPRECATED: this method was used in a previous implementation of
-   * getName, but is no longer in use.
-   */
-  deprecated string getNameInBlock(BlockStmt b) {
-    exists(ParameterDeclarationEntry pde |
-      pde.getFunctionDeclarationEntry().getBlock() = b and
-      this.getFunction().getBlock() = b and
-      pde.getVariable() = this and
-      result = pde.getName()
-    )
+    else result = this.getADeclarationEntry()
   }
 
   /**
@@ -114,7 +103,7 @@ class Parameter extends LocalScopeVariable, @parameter {
    * `getName()` is not "(unnamed parameter i)" (where `i` is the index
    * of the parameter).
    */
-  predicate isNamed() { exists(getANamedDeclarationEntry()) }
+  predicate isNamed() { exists(this.getANamedDeclarationEntry()) }
 
   /**
    * Gets the function to which this parameter belongs, if it is a function
@@ -129,6 +118,12 @@ class Parameter extends LocalScopeVariable, @parameter {
    * block parameter.
    */
   BlockStmt getCatchBlock() { params(underlyingElement(this), unresolveElement(result), _, _) }
+
+  /**
+   * Gets the requires expression to which the parameter belongs, if it is a
+   * requires expression parameter.
+   */
+  RequiresExpr getRequiresExpr() { params(underlyingElement(this), unresolveElement(result), _, _) }
 
   /**
    * Gets the zero-based index of this parameter.
@@ -157,9 +152,9 @@ class Parameter extends LocalScopeVariable, @parameter {
    */
   override Location getLocation() {
     exists(VariableDeclarationEntry vde |
-      vde = getAnEffectiveDeclarationEntry() and result = vde.getLocation()
+      vde = this.getAnEffectiveDeclarationEntry() and result = vde.getLocation()
     |
-      vde.isDefinition() or not getAnEffectiveDeclarationEntry().isDefinition()
+      vde.isDefinition() or not this.getAnEffectiveDeclarationEntry().isDefinition()
     )
   }
 }

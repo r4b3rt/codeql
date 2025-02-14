@@ -100,7 +100,7 @@ Type baseType(Type t) {
  */
 predicate exprSourceType(Expr use, Type sourceType, Location sourceLoc) {
   // Reaching definitions.
-  if exists(SsaDefinition def, StackVariable v | use = def.getAUse(v))
+  if exists(SsaDefinition def | use = def.getAUse(_))
   then
     exists(SsaDefinition def, StackVariable v | use = def.getAUse(v) |
       defSourceType(def, v, sourceType, sourceLoc)
@@ -121,16 +121,14 @@ predicate exprSourceType(Expr use, Type sourceType, Location sourceLoc) {
           else
             if use instanceof CrementOperation
             then exprSourceType(use.(CrementOperation).getOperand(), sourceType, sourceLoc)
-            else
+            else (
               // Conversions are not in the AST, so ignore them.
-              if use instanceof Conversion
-              then none()
-              else (
-                // Source expressions
-                sourceType = use.getUnspecifiedType() and
-                isPointerType(sourceType) and
-                sourceLoc = use.getLocation()
-              )
+              not use instanceof Conversion and
+              // Source expressions
+              sourceType = use.getUnspecifiedType() and
+              isPointerType(sourceType) and
+              sourceLoc = use.getLocation()
+            )
 }
 
 /**

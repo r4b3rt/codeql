@@ -1,11 +1,10 @@
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Semmle.Extraction.CSharp.Populators;
-using Semmle.Extraction.Entities;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Semmle.Extraction.CSharp.Populators;
 
 namespace Semmle.Extraction.CSharp.Entities
 {
@@ -22,10 +21,9 @@ namespace Semmle.Extraction.CSharp.Entities
             NamedTypeFactory.Instance.CreateEntityFromSymbol(cx, type);
 
         /// <summary>
-        /// Creates a named type entity from a tuple type. Unlike `Create`, this
+        /// Creates a named type entity from a tuple type. Unlike <see cref="Create"/>, this
         /// will create an entity for the underlying `System.ValueTuple` struct.
-        /// For example, `(int, string)` will result in an entity for
-        /// `System.ValueTuple<int, string>`.
+        /// For example, `(int, string)` will result in an entity for `System.ValueTuple&lt;int, string&gt;`.
         /// </summary>
         public static NamedType CreateNamedTypeFromTupleType(Context cx, INamedTypeSymbol type) =>
             UnderlyingTupleTypeFactory.Instance.CreateEntity(cx, (new SymbolEqualityWrapper(type), typeof(TupleType)), type);
@@ -36,7 +34,8 @@ namespace Semmle.Extraction.CSharp.Entities
         {
             if (Symbol.TypeKind == TypeKind.Error)
             {
-                Context.Extractor.MissingType(Symbol.ToString()!, Context.FromSource);
+                UnknownType.Create(Context); // make sure this exists so we can use it in `TypeRef::getReferencedType`
+                Context.ExtractionContext.MissingType(Symbol.ToString()!, Context.FromSource);
                 return;
             }
 
@@ -48,7 +47,7 @@ namespace Semmle.Extraction.CSharp.Entities
                 if (Symbol.IsBoundNullable())
                 {
                     // An instance of Nullable<T>
-                    trapFile.nullable_underlying_type(this, Create(Context, Symbol.TypeArguments[0]).TypeRef);
+                    trapFile.nullable_underlying_type(this, TypeArguments[0].TypeRef);
                 }
                 else if (Symbol.IsReallyUnbound())
                 {
@@ -67,7 +66,7 @@ namespace Semmle.Extraction.CSharp.Entities
                         : Type.Create(Context, Symbol.ConstructedFrom);
                     trapFile.constructed_generic(this, unbound.TypeRef);
 
-                    for (var i = 0; i < Symbol.TypeArguments.Length; ++i)
+                    for (var i = 0; i < TypeArguments.Length; ++i)
                     {
                         trapFile.type_arguments(TypeArguments[i].TypeRef, i, this);
                     }
@@ -101,14 +100,14 @@ namespace Semmle.Extraction.CSharp.Entities
 
         public override IEnumerable<Type> TypeMentions => TypeArguments;
 
-        public override IEnumerable<Extraction.Entities.Location> Locations
+        public override IEnumerable<Location> Locations
         {
             get
             {
                 foreach (var l in GetLocations(Symbol))
                     yield return Context.CreateLocation(l);
 
-                if (!Context.Extractor.Standalone && Symbol.DeclaringSyntaxReferences.Any())
+                if (Symbol.DeclaringSyntaxReferences.Any())
                     yield return Assembly.CreateOutputAssembly(Context);
             }
         }
@@ -124,7 +123,7 @@ namespace Semmle.Extraction.CSharp.Entities
                 );
         }
 
-        public override Microsoft.CodeAnalysis.Location? ReportingLocation => GetLocations(Symbol).FirstOrDefault();
+        public override Microsoft.CodeAnalysis.Location? ReportingLocation => GetLocations(Symbol).BestOrDefault();
 
         private bool IsAnonymousType() => Symbol.IsAnonymousType || Symbol.Name.Contains("__AnonymousType");
 

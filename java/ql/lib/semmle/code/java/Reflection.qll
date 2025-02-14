@@ -33,7 +33,7 @@ predicate referencedInXmlFile(Field f) {
  * Gets an XML element with an attribute whose value is the name of `f`,
  * suggesting that it might reference `f`.
  */
-private XMLElement elementReferencingField(Field f) {
+private XmlElement elementReferencingField(Field f) {
   exists(elementReferencingType(f.getDeclaringType())) and
   result.getAnAttribute().getValue() = f.getName()
 }
@@ -42,7 +42,7 @@ private XMLElement elementReferencingField(Field f) {
  * Gets an XML element with an attribute whose value is the fully qualified
  * name of `rt`, suggesting that it might reference `rt`.
  */
-private XMLElement elementReferencingType(RefType rt) {
+private XmlElement elementReferencingType(RefType rt) {
   result.getAnAttribute().getValue() = rt.getSourceDeclaration().getQualifiedName()
 }
 
@@ -55,31 +55,31 @@ abstract private class ReflectiveClassIdentifier extends Expr {
 
 private class ReflectiveClassIdentifierLiteral extends ReflectiveClassIdentifier, TypeLiteral {
   override RefType getReflectivelyIdentifiedClass() {
-    result = getReferencedType().(RefType).getSourceDeclaration()
+    result = this.getReferencedType().(RefType).getSourceDeclaration()
   }
 }
 
 /**
  * A call to a Java standard library method which constructs or returns a `Class<T>` from a `String`.
  */
-class ReflectiveClassIdentifierMethodAccess extends ReflectiveClassIdentifier, MethodAccess {
-  ReflectiveClassIdentifierMethodAccess() {
+class ReflectiveClassIdentifierMethodCall extends ReflectiveClassIdentifier, MethodCall {
+  ReflectiveClassIdentifierMethodCall() {
     // A call to `Class.forName(...)`, from which we can infer `T` in the returned type `Class<T>`.
-    getCallee().getDeclaringType() instanceof TypeClass and getCallee().hasName("forName")
+    this.getCallee().getDeclaringType() instanceof TypeClass and this.getCallee().hasName("forName")
     or
     // A call to `ClassLoader.loadClass(...)`, from which we can infer `T` in the returned type `Class<T>`.
-    getCallee().getDeclaringType().hasQualifiedName("java.lang", "ClassLoader") and
-    getCallee().hasName("loadClass")
+    this.getCallee().getDeclaringType().hasQualifiedName("java.lang", "ClassLoader") and
+    this.getCallee().hasName("loadClass")
   }
 
   /**
    * If the argument to this call is a `StringLiteral`, then return that string.
    */
-  string getTypeName() { result = getArgument(0).(StringLiteral).getRepresentedString() }
+  string getTypeName() { result = this.getArgument(0).(StringLiteral).getValue() }
 
   override RefType getReflectivelyIdentifiedClass() {
     // We only handle cases where the class is specified as a string literal to this call.
-    result.getQualifiedName() = getTypeName()
+    result.getQualifiedName() = this.getTypeName()
   }
 }
 
@@ -92,7 +92,7 @@ private ReflectiveClassIdentifier pointsToReflectiveClassIdentifier(Expr expr) {
   or
   // Or if this is an access of a variable which was defined as an expression creating a `Class<T>`,
   // return the inferred `T` from the definition expression.
-  exists(RValue use, VariableAssign assign |
+  exists(VarRead use, VariableAssign assign |
     use = expr and
     defUsePair(assign, use) and
     // The source of the assignment must be a `ReflectiveClassIdentifier`.
@@ -150,7 +150,7 @@ private Type parameterForSubTypes(ParameterizedType type) {
       lowerBound = arg.(Wildcard).getLowerBoundType()
     |
       // `T super Foo` implies that `Foo`, or any super-type of `Foo`, may be represented.
-      lowerBound.(RefType).getAnAncestor() = result
+      lowerBound.getAnAncestor() = result
     )
   )
 }
@@ -211,13 +211,13 @@ private predicate expectsEnclosingInstance(RefType r) {
 /**
  * A call to `Class.newInstance()` or `Constructor.newInstance()`.
  */
-class NewInstance extends MethodAccess {
+class NewInstance extends MethodCall {
   NewInstance() {
     (
-      getCallee().getDeclaringType() instanceof TypeClass or
-      getCallee().getDeclaringType() instanceof TypeConstructor
+      this.getCallee().getDeclaringType() instanceof TypeClass or
+      this.getCallee().getDeclaringType() instanceof TypeConstructor
     ) and
-    getCallee().hasName("newInstance")
+    this.getCallee().hasName("newInstance")
   }
 
   /**
@@ -225,26 +225,26 @@ class NewInstance extends MethodAccess {
    * called.
    */
   Constructor getInferredConstructor() {
-    result = getInferredConstructedType().getAConstructor() and
-    if getCallee().getDeclaringType() instanceof TypeClass
+    result = this.getInferredConstructedType().getAConstructor() and
+    if this.getCallee().getDeclaringType() instanceof TypeClass
     then result.getNumberOfParameters() = 0
     else
-      if getNumArgument() = 1 and getArgument(0).getType() instanceof Array
+      if this.getNumArgument() = 1 and this.getArgument(0).getType() instanceof Array
       then
         // This is a var-args array argument. If array argument is initialized inline, then identify
         // the number of arguments specified in the array.
-        if exists(getArgument(0).(ArrayCreationExpr).getInit())
+        if exists(this.getArgument(0).(ArrayCreationExpr).getInit())
         then
           // Count the number of elements in the initializer, and find the matching constructors.
-          matchConstructorArguments(result,
-            count(getArgument(0).(ArrayCreationExpr).getInit().getAnInit()))
+          this.matchConstructorArguments(result,
+            count(this.getArgument(0).(ArrayCreationExpr).getInit().getAnInit()))
         else
           // Could be any of the constructors on this class.
           any()
       else
         // No var-args in play, just use the number of arguments to the `newInstance(..)` to determine
         // which constructors may be called.
-        matchConstructorArguments(result, getNumArgument())
+        this.matchConstructorArguments(result, this.getNumArgument())
   }
 
   /**
@@ -273,13 +273,13 @@ class NewInstance extends MethodAccess {
     not result instanceof TypeVariable and
     (
       // If this is called on a `Class<T>` instance, return the inferred type `T`.
-      result = inferClassParameterType(getQualifier())
+      result = inferClassParameterType(this.getQualifier())
       or
       // If this is called on a `Constructor<T>` instance, return the inferred type `T`.
-      result = inferConstructorParameterType(getQualifier())
+      result = inferConstructorParameterType(this.getQualifier())
       or
       // If the result of this is cast to a particular type, then use that type.
-      result = getCastInferredConstructedTypes()
+      result = this.getCastInferredConstructedTypes()
     )
   }
 
@@ -295,16 +295,16 @@ class NewInstance extends MethodAccess {
       // If we cast the result of this method, then this is either the type specified, or a
       // sub-type of that type. Make sure we exclude overly generic types such as `Object`.
       not overlyGenericType(cast.getType()) and
-      hasSubtype*(cast.getType(), result)
+      hasDescendant(cast.getType(), result)
     )
   }
 }
 
 /**
- * A `MethodAccess` on a `Class` element.
+ * A `MethodCall` on a `Class` instance.
  */
-class ClassMethodAccess extends MethodAccess {
-  ClassMethodAccess() { this.getCallee().getDeclaringType() instanceof TypeClass }
+class ClassMethodCall extends MethodCall {
+  ClassMethodCall() { this.getCallee().getDeclaringType() instanceof TypeClass }
 
   /**
    * Gets an inferred type for the `Class` represented by this expression.
@@ -313,15 +313,15 @@ class ClassMethodAccess extends MethodAccess {
     // `TypeVariable`s do not have methods themselves.
     not result instanceof TypeVariable and
     // If this is called on a `Class<T>` instance, return the inferred type `T`.
-    result = inferClassParameterType(getQualifier())
+    result = inferClassParameterType(this.getQualifier())
   }
 }
 
 /**
  * A call to `Class.getConstructors(..)` or `Class.getDeclaredConstructors(..)`.
  */
-class ReflectiveConstructorsAccess extends ClassMethodAccess {
-  ReflectiveConstructorsAccess() {
+class ReflectiveGetConstructorsCall extends ClassMethodCall {
+  ReflectiveGetConstructorsCall() {
     this.getCallee().hasName("getConstructors") or
     this.getCallee().hasName("getDeclaredConstructors")
   }
@@ -330,8 +330,8 @@ class ReflectiveConstructorsAccess extends ClassMethodAccess {
 /**
  * A call to `Class.getMethods(..)` or `Class.getDeclaredMethods(..)`.
  */
-class ReflectiveMethodsAccess extends ClassMethodAccess {
-  ReflectiveMethodsAccess() {
+class ReflectiveGetMethodsCall extends ClassMethodCall {
+  ReflectiveGetMethodsCall() {
     this.getCallee().hasName("getMethods") or
     this.getCallee().hasName("getDeclaredMethods")
   }
@@ -340,8 +340,8 @@ class ReflectiveMethodsAccess extends ClassMethodAccess {
 /**
  * A call to `Class.getMethod(..)` or `Class.getDeclaredMethod(..)`.
  */
-class ReflectiveMethodAccess extends ClassMethodAccess {
-  ReflectiveMethodAccess() {
+class ReflectiveGetMethodCall extends ClassMethodCall {
+  ReflectiveGetMethodCall() {
     this.getCallee().hasName("getMethod") or
     this.getCallee().hasName("getDeclaredMethod")
   }
@@ -354,33 +354,37 @@ class ReflectiveMethodAccess extends ClassMethodAccess {
       if this.getCallee().hasName("getDeclaredMethod")
       then
         // The method must be declared on the type itself.
-        result.getDeclaringType() = getInferredClassType()
-      else
-        // The method may be declared on an inferred type or a super-type.
-        getInferredClassType().inherits(result)
+        result.getDeclaringType() = this.getInferredClassType()
+      else (
+        // The method must be public, and declared or inherited by the inferred class type.
+        result.isPublic() and
+        this.getInferredClassType().inherits(result)
+      )
     ) and
     // Only consider instances where the method name is provided as a `StringLiteral`.
-    result.hasName(getArgument(0).(StringLiteral).getRepresentedString())
+    result.hasName(this.getArgument(0).(StringLiteral).getValue())
   }
 }
 
 /**
  * A call to `Class.getAnnotation(..)`.
  */
-class ReflectiveAnnotationAccess extends ClassMethodAccess {
-  ReflectiveAnnotationAccess() { this.getCallee().hasName("getAnnotation") }
+class ReflectiveGetAnnotationCall extends ClassMethodCall {
+  ReflectiveGetAnnotationCall() { this.getCallee().hasName("getAnnotation") }
 
   /**
    * Gets a possible annotation type for this reflective annotation access.
    */
-  AnnotationType getAPossibleAnnotationType() { result = inferClassParameterType(getArgument(0)) }
+  AnnotationType getAPossibleAnnotationType() {
+    result = inferClassParameterType(this.getArgument(0))
+  }
 }
 
 /**
  * A call to `Class.getField(..)` that accesses a field.
  */
-class ReflectiveFieldAccess extends ClassMethodAccess {
-  ReflectiveFieldAccess() {
+class ReflectiveGetFieldCall extends ClassMethodCall {
+  ReflectiveGetFieldCall() {
     this.getCallee().hasName("getField") or
     this.getCallee().hasName("getDeclaredField")
   }
@@ -391,13 +395,13 @@ class ReflectiveFieldAccess extends ClassMethodAccess {
       if this.getCallee().hasName("getDeclaredField")
       then
         // Declared fields must be on the type itself.
-        result.getDeclaringType() = getInferredClassType()
+        result.getDeclaringType() = this.getInferredClassType()
       else (
         // This field must be public, and be inherited by one of the inferred class types.
         result.isPublic() and
-        getInferredClassType().inherits(result)
+        this.getInferredClassType().inherits(result)
       )
     ) and
-    result.hasName(getArgument(0).(StringLiteral).getRepresentedString())
+    result.hasName(this.getArgument(0).(StringLiteral).getValue())
   }
 }

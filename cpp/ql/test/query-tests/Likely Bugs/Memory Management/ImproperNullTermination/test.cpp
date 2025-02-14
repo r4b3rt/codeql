@@ -6,6 +6,7 @@ size_t strlen(const char *s);
 char *strcpy(char *s1, const char *s2);
 char *strcat(char *s1, const char *s2);
 char *strdup(const char *s1);
+long int strtol(const char* nptr, char** endptr, int base);
 void *malloc(size_t size);
 void *memset(void *s, int c, size_t n);
 void *memcpy(void *s1, const void *s2, size_t n);
@@ -225,6 +226,7 @@ void test_readlink(int fd, const char *path, size_t sz)
 void doNothing(char *data) { };
 void doNothing2(const char *data);
 void clearBuffer(char *data, size_t size);
+char *id(char *data) { return data; }
 
 void test_strcat()
 {
@@ -318,6 +320,13 @@ void test_strcat()
 		clearBuffer(buffer, 1024);
 		strcat(buffer, "content"); // GOOD
 	}
+
+	{
+		char buffer[1024];
+
+		clearBuffer(id(buffer), 1024);
+		strcat(buffer, "content"); // GOOD
+	}
 }
 
 void test_strlen(bool cond1, bool cond2)
@@ -343,7 +352,7 @@ void test_strlen(bool cond1, bool cond2)
 		if (cond1)
 			buffer[0] = 0;
 		if (cond1)
-			strlen(buffer); // GOOD [FALSE POSITIVE]
+			strlen(buffer); // GOOD
 	}
 
 	{
@@ -352,7 +361,54 @@ void test_strlen(bool cond1, bool cond2)
 		if (cond1)
 			buffer[0] = 0;
 		if (cond2)
-			strlen(buffer); // BAD
+			strlen(buffer); // BAD [NOT DETECTED]
+	}
+
+	{
+		char buffer[1024];
+
+		if (cond1)
+		{
+			buffer[0] = 0;
+		} else {
+			buffer[0] = 0;
+		}
+
+		strlen(buffer); // GOOD
+	}
+
+	{
+		char buffer[1024];
+		int init = 0;
+
+		if (cond1)
+		{
+			buffer[0] = 0;
+			init = 1;
+		}
+
+		if (init != 0)
+		{
+			strlen(buffer); // GOOD
+		}
+	}
+
+	{
+		char buffer[1024];
+		int init = 0;
+
+		if (cond1)
+		{
+			buffer[0] = 0;
+			init = 1;
+		}
+
+		if (init == 0)
+		{
+			// ...
+		} else {
+			strlen(buffer); // GOOD
+		}
 	}
 }
 
@@ -434,6 +490,19 @@ void test_read_fread(int read_src, FILE *s)
 	}
 }
 
+void test_strtol()
+{
+	{
+		char buffer[100];
+		char *after_ptr;
+		long int num;
+
+		strcpy(buffer, "123abc");
+		num = strtol("123abc", &after_ptr, 10);
+		strlen(after_ptr); // GOOD
+	}
+}
+
 int printf(const char *format, ...);
 
 void test_printf(char *str)
@@ -464,5 +533,54 @@ void test_printf(char *str)
 
 		memcpy(copied_str, str, len + 1);
 		printf("%s", copied_str); // GOOD
+	}
+}
+
+void test_reassignment()
+{
+	{
+		char buffer1[1024];
+		char buffer2[1024];
+		char *buffer_ptr = buffer1;
+
+		buffer_ptr = buffer2;
+		strcpy(buffer_ptr, "content"); // null terminates buffer2
+		strdup(buffer2); // GOOD
+	}
+
+	{
+		char buffer1[1024];
+		char buffer2[1024];
+		char *buffer_ptr = buffer1;
+
+		strcpy(buffer_ptr, "content"); // null terminates buffer1
+		buffer_ptr = buffer2;
+		strdup(buffer2); // BAD
+	}
+
+	{
+		char buffer1[1024];
+		char buffer2[1024];
+		char *buffer_ptr = buffer1;
+
+		while (cond())
+		{
+			buffer_ptr = buffer2;
+			strcpy(buffer_ptr, "content"); // null terminates buffer2
+			strdup(buffer2); // GOOD
+		}
+	}
+
+	{
+		char buffer1[1024];
+		char buffer2[1024];
+		char *buffer_ptr = buffer1;
+
+		while (cond())
+		{
+			strcpy(buffer_ptr, "content"); // null terminates buffer1 or buffer2
+			buffer_ptr = buffer2;
+			strdup(buffer2); // BAD [NOT DETECTED]
+		}
 	}
 }

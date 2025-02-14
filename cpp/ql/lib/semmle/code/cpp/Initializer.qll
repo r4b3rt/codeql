@@ -34,8 +34,8 @@ class Initializer extends ControlFlowNode, @initialiser {
   override predicate fromSource() { not this.getLocation() instanceof UnknownLocation }
 
   override string toString() {
-    if exists(getDeclaration())
-    then result = "initializer for " + max(getDeclaration().getName())
+    if exists(this.getDeclaration())
+    then result = "initializer for " + max(this.getDeclaration().getName())
     else result = "initializer"
   }
 
@@ -51,4 +51,7 @@ class Initializer extends ControlFlowNode, @initialiser {
   override Function getControlFlowScope() { result = this.getExpr().getEnclosingFunction() }
 
   override Stmt getEnclosingStmt() { result = this.getExpr().getEnclosingStmt() }
+
+  /** Holds if the initializer used the C++ braced initializer notation. */
+  predicate isBraced() { braced_initialisers(underlyingElement(this)) }
 }

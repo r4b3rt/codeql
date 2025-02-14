@@ -21,7 +21,7 @@ string kindstr(Class c) {
     or
     kind = 2 and result = "Class"
     or
-    kind = 6 and result = "Template class"
+    kind = [15, 16] and result = "Template class"
   )
 }
 
@@ -63,17 +63,17 @@ class VariableDeclarationLine extends TVariableDeclarationInfo {
   /**
    * Gets a `VariableDeclarationEntry` on this line.
    */
-  VariableDeclarationEntry getAVDE() { vdeInfo(result, c, f, line) }
+  VariableDeclarationEntry getAVde() { vdeInfo(result, c, f, line) }
 
   /**
    * Gets the start column of the first `VariableDeclarationEntry` on this line.
    */
-  int getStartColumn() { result = min(getAVDE().getLocation().getStartColumn()) }
+  int getStartColumn() { result = min(this.getAVde().getLocation().getStartColumn()) }
 
   /**
    * Gets the end column of the last `VariableDeclarationEntry` on this line.
    */
-  int getEndColumn() { result = max(getAVDE().getLocation().getEndColumn()) }
+  int getEndColumn() { result = max(this.getAVde().getLocation().getEndColumn()) }
 
   /**
    * Gets the rank of this `VariableDeclarationLine` in its file and class
@@ -89,14 +89,14 @@ class VariableDeclarationLine extends TVariableDeclarationInfo {
    */
   VariableDeclarationLine getNext() {
     result = TVariableDeclarationLine(c, f, _) and
-    result.getRank() = getRank() + 1
+    result.getRank() = this.getRank() + 1
   }
 
   /**
    * Gets the `VariableDeclarationLine` following this one, if it is nearby.
    */
   VariableDeclarationLine getProximateNext() {
-    result = getNext() and
+    result = this.getNext() and
     result.getLine() <= this.getLine() + 3
   }
 
@@ -114,14 +114,14 @@ class VariableDeclarationGroup extends VariableDeclarationLine {
     // there is no `VariableDeclarationLine` within three lines previously
     not any(VariableDeclarationLine prev).getProximateNext() = this and
     // `end` is the last transitively proximate line
-    end = getProximateNext*() and
+    end = this.getProximateNext*() and
     not exists(end.getProximateNext())
   }
 
   predicate hasLocationInfo(string path, int startline, int startcol, int endline, int endcol) {
     path = f.getAbsolutePath() and
-    startline = getLine() and
-    startcol = getStartColumn() and
+    startline = this.getLine() and
+    startcol = this.getStartColumn() and
     endline = end.getLine() and
     endcol = end.getEndColumn()
   }
@@ -132,18 +132,18 @@ class VariableDeclarationGroup extends VariableDeclarationLine {
   int getCount() {
     result =
       count(VariableDeclarationLine l |
-        l = getProximateNext*()
+        l = this.getProximateNext*()
       |
-        l.getAVDE().getVariable().getName()
+        l.getAVde().getVariable().getName()
       )
   }
 
   override string toString() {
-    getCount() = 1 and
-    result = "declaration of " + getAVDE().getVariable().getName()
+    this.getCount() = 1 and
+    result = "declaration of " + this.getAVde().getVariable().getName()
     or
-    getCount() > 1 and
-    result = "group of " + getCount() + " fields here"
+    this.getCount() > 1 and
+    result = "group of " + this.getCount() + " fields here"
   }
 }
 
@@ -153,12 +153,12 @@ class ExtClass extends Class {
   }
 
   predicate hasLocationInfo(string path, int startline, int startcol, int endline, int endcol) {
-    if hasOneVariableGroup()
+    if this.hasOneVariableGroup()
     then
       exists(VariableDeclarationGroup vdg | vdg.getClass() = this |
         vdg.hasLocationInfo(path, startline, startcol, endline, endcol)
       )
-    else getLocation().hasLocationInfo(path, startline, startcol, endline, endcol)
+    else this.getLocation().hasLocationInfo(path, startline, startcol, endline, endcol)
   }
 }
 
@@ -168,12 +168,7 @@ where
     strictcount(string fieldName |
       exists(Field f |
         f.getDeclaringType() = c and
-        fieldName = f.getName() and
-        // IBOutlet's are a way of building GUIs
-        // automatically out of ObjC properties.
-        // We don't want to count those for the
-        // purposes of this query.
-        not f.getType().getAnAttribute().hasName("iboutlet")
+        fieldName = f.getName()
       )
     ) and
   n > 15 and

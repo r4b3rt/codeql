@@ -10,54 +10,54 @@ import semmle.code.java.dataflow.TaintTracking
 /**
  * A `Method` that is considered a "safe" external API from a security perspective.
  */
-abstract class SafeExternalAPIMethod extends Method { }
+abstract class SafeExternalApiMethod extends Method { }
 
 /** The default set of "safe" external APIs. */
-private class DefaultSafeExternalAPIMethod extends SafeExternalAPIMethod {
-  DefaultSafeExternalAPIMethod() {
+private class DefaultSafeExternalApiMethod extends SafeExternalApiMethod {
+  DefaultSafeExternalApiMethod() {
     this instanceof EqualsMethod
     or
-    getName().regexpMatch("size|length|compareTo|getClass|lastIndexOf")
+    this.hasName(["size", "length", "compareTo", "getClass", "lastIndexOf"])
     or
     this.getDeclaringType().hasQualifiedName("org.apache.commons.lang3", "Validate")
     or
-    getQualifiedName() = "Objects.equals"
+    this.hasQualifiedName("java.util", "Objects", "equals")
     or
-    getDeclaringType() instanceof TypeString and getName() = "equals"
+    this.getDeclaringType() instanceof TypeString and this.getName() = "equals"
     or
-    getDeclaringType().hasQualifiedName("com.google.common.base", "Preconditions")
+    this.getDeclaringType().hasQualifiedName("com.google.common.base", "Preconditions")
     or
-    getDeclaringType().getPackage().getName().matches("org.junit%")
+    this.getDeclaringType().getPackage().getName().matches("org.junit%")
     or
-    getDeclaringType().hasQualifiedName("com.google.common.base", "Strings") and
-    getName() = "isNullOrEmpty"
+    this.getDeclaringType().hasQualifiedName("com.google.common.base", "Strings") and
+    this.getName() = "isNullOrEmpty"
     or
-    getDeclaringType().hasQualifiedName("org.apache.commons.lang3", "StringUtils") and
-    getName() = "isNotEmpty"
+    this.getDeclaringType().hasQualifiedName("org.apache.commons.lang3", "StringUtils") and
+    this.getName() = "isNotEmpty"
     or
-    getDeclaringType().hasQualifiedName("java.lang", "Character") and
-    getName() = "isDigit"
+    this.getDeclaringType().hasQualifiedName("java.lang", "Character") and
+    this.getName() = "isDigit"
     or
-    getDeclaringType().hasQualifiedName("java.lang", "String") and
-    getName().regexpMatch("equalsIgnoreCase|regionMatches")
+    this.getDeclaringType().hasQualifiedName("java.lang", "String") and
+    this.hasName(["equalsIgnoreCase", "regionMatches"])
     or
-    getDeclaringType().hasQualifiedName("java.lang", "Boolean") and
-    getName() = "parseBoolean"
+    this.getDeclaringType().hasQualifiedName("java.lang", "Boolean") and
+    this.getName() = "parseBoolean"
     or
-    getDeclaringType().hasQualifiedName("org.apache.commons.io", "IOUtils") and
-    getName() = "closeQuietly"
+    this.getDeclaringType().hasQualifiedName("org.apache.commons.io", "IOUtils") and
+    this.getName() = "closeQuietly"
     or
-    getDeclaringType().hasQualifiedName("org.springframework.util", "StringUtils") and
-    getName().regexpMatch("hasText|isEmpty")
+    this.getDeclaringType().hasQualifiedName("org.springframework.util", "StringUtils") and
+    this.hasName(["hasText", "isEmpty"])
   }
 }
 
 /** A node representing data being passed to an external API. */
-class ExternalAPIDataNode extends DataFlow::Node {
+class ExternalApiDataNode extends DataFlow::Node {
   Call call;
   int i;
 
-  ExternalAPIDataNode() {
+  ExternalApiDataNode() {
     (
       // Argument to call to a method
       this.asExpr() = call.getArgument(i)
@@ -76,10 +76,10 @@ class ExternalAPIDataNode extends DataFlow::Node {
       m.fromSource()
     ) and
     // Not already modeled as a taint step (we need both of these to handle `AdditionalTaintStep` subclasses as well)
-    not exists(DataFlow::Node next | TaintTracking::localTaintStep(this, next)) and
-    not exists(DataFlow::Node next | TaintTracking::defaultAdditionalTaintStep(this, next)) and
+    not TaintTracking::localTaintStep(this, _) and
+    not TaintTracking::defaultAdditionalTaintStep(this, _, _) and
     // Not a call to a known safe external API
-    not call.getCallee() instanceof SafeExternalAPIMethod
+    not call.getCallee() instanceof SafeExternalApiMethod
   }
 
   /** Gets the called API `Method`. */
@@ -89,48 +89,51 @@ class ExternalAPIDataNode extends DataFlow::Node {
   int getIndex() { result = i }
 
   /** Gets the description of the method being called. */
-  string getMethodDescription() {
-    result = getMethod().getDeclaringType().getPackage() + "." + getMethod().getQualifiedName()
-  }
+  string getMethodDescription() { result = this.getMethod().getQualifiedName() }
 }
 
-/** A configuration for tracking flow from `RemoteFlowSource`s to `ExternalAPIDataNode`s. */
-class UntrustedDataToExternalAPIConfig extends TaintTracking::Configuration {
-  UntrustedDataToExternalAPIConfig() { this = "UntrustedDataToExternalAPIConfig" }
+/**
+ * Taint tracking configuration for flow from `ActiveThreatModelSource`s to `ExternalApiDataNode`s.
+ */
+module UntrustedDataToExternalApiConfig implements DataFlow::ConfigSig {
+  predicate isSource(DataFlow::Node source) { source instanceof ActiveThreatModelSource }
 
-  override predicate isSource(DataFlow::Node source) { source instanceof RemoteFlowSource }
-
-  override predicate isSink(DataFlow::Node sink) { sink instanceof ExternalAPIDataNode }
+  predicate isSink(DataFlow::Node sink) { sink instanceof ExternalApiDataNode }
 }
+
+/**
+ * Tracks flow from untrusted data to external APIs.
+ */
+module UntrustedDataToExternalApiFlow = TaintTracking::Global<UntrustedDataToExternalApiConfig>;
 
 /** A node representing untrusted data being passed to an external API. */
-class UntrustedExternalAPIDataNode extends ExternalAPIDataNode {
-  UntrustedExternalAPIDataNode() { any(UntrustedDataToExternalAPIConfig c).hasFlow(_, this) }
+class UntrustedExternalApiDataNode extends ExternalApiDataNode {
+  UntrustedExternalApiDataNode() { UntrustedDataToExternalApiFlow::flowTo(this) }
 
   /** Gets a source of untrusted data which is passed to this external API data node. */
-  DataFlow::Node getAnUntrustedSource() {
-    any(UntrustedDataToExternalAPIConfig c).hasFlow(result, this)
-  }
+  DataFlow::Node getAnUntrustedSource() { UntrustedDataToExternalApiFlow::flow(result, this) }
 }
 
-private newtype TExternalAPI =
-  TExternalAPIParameter(Method m, int index) {
-    exists(UntrustedExternalAPIDataNode n |
+/** An external API which is used with untrusted data. */
+private newtype TExternalApi =
+  /** An untrusted API method `m` where untrusted data is passed at `index`. */
+  TExternalApiParameter(Method m, int index) {
+    exists(UntrustedExternalApiDataNode n |
       m = n.getMethod() and
       index = n.getIndex()
     )
   }
 
 /** An external API which is used with untrusted data. */
-class ExternalAPIUsedWithUntrustedData extends TExternalAPI {
+class ExternalApiUsedWithUntrustedData extends TExternalApi {
   /** Gets a possibly untrusted use of this external API. */
-  UntrustedExternalAPIDataNode getUntrustedDataNode() {
-    this = TExternalAPIParameter(result.getMethod(), result.getIndex())
+  UntrustedExternalApiDataNode getUntrustedDataNode() {
+    this = TExternalApiParameter(result.getMethod(), result.getIndex())
   }
 
   /** Gets the number of untrusted sources used with this external API. */
   int getNumberOfUntrustedSources() {
-    result = count(getUntrustedDataNode().getAnUntrustedSource())
+    result = count(this.getUntrustedDataNode().getAnUntrustedSource())
   }
 
   /** Gets a textual representation of this element. */
@@ -138,10 +141,9 @@ class ExternalAPIUsedWithUntrustedData extends TExternalAPI {
     exists(Method m, int index, string indexString |
       if index = -1 then indexString = "qualifier" else indexString = "param " + index
     |
-      this = TExternalAPIParameter(m, index) and
+      this = TExternalApiParameter(m, index) and
       result =
-        m.getDeclaringType().(RefType).getQualifiedName() + "." + m.getSignature() + " [" +
-          indexString + "]"
+        m.getDeclaringType().getQualifiedName() + "." + m.getSignature() + " [" + indexString + "]"
     )
   }
 }

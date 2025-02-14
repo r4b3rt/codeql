@@ -17,8 +17,6 @@ import javascript
  * ```
  */
 class Token extends Locatable, @token {
-  override Location getLocation() { hasLocation(this, result) }
-
   /** Gets the toplevel syntactic structure to which this token belongs. */
   TopLevel getTopLevel() { tokeninfo(this, _, result, _, _) }
 
@@ -37,7 +35,7 @@ class Token extends Locatable, @token {
   /** Gets the token preceding this token inside the same toplevel structure, if any. */
   Token getPreviousToken() { result.getNextToken() = this }
 
-  override string toString() { result = getValue() }
+  override string toString() { result = this.getValue() }
 }
 
 /** An end-of-file token. */

@@ -16,7 +16,7 @@
 import java
 
 /** A comparison (using `==`) with `null`. */
-class NullEQExpr extends EQExpr {
+class NullEQExpr extends ValueOrReferenceEqualsExpr {
   NullEQExpr() { exists(NullLiteral l | l.getParent() = this) }
 }
 
@@ -28,12 +28,12 @@ class StaticFieldInit extends AssignExpr {
 
   IfStmt getAnEnclosingNullCheck() {
     result.getThen().getAChild*() = this.getEnclosingStmt() and
-    result.getCondition().(NullEQExpr).getAChildExpr() = getField().getAnAccess()
+    result.getCondition().(NullEQExpr).getAChildExpr() = this.getField().getAnAccess()
   }
 
   IfStmt getNearestNullCheck() {
-    result = getAnEnclosingNullCheck() and
-    not result.getAChild+() = getAnEnclosingNullCheck()
+    result = this.getAnEnclosingNullCheck() and
+    not result.getAChild+() = this.getAnEnclosingNullCheck()
   }
 }
 
@@ -61,15 +61,15 @@ class ValidSynchStmt extends Stmt {
     exists(TryStmt try, LockObjectField lockField |
       this = try.getBlock() and
       lockField.getType().(RefType).hasQualifiedName("java.util.concurrent.locks", "ReentrantLock") and
-      exists(MethodAccess lockAction |
+      exists(MethodCall lockAction |
         lockAction.getQualifier() = lockField.getAnAccess() and
         lockAction.getMethod().getName() = "lock" and
-        dominates(lockAction, this)
+        dominates(lockAction.getControlFlowNode(), this.getControlFlowNode())
       ) and
-      exists(MethodAccess unlockAction |
+      exists(MethodCall unlockAction |
         unlockAction.getQualifier() = lockField.getAnAccess() and
         unlockAction.getMethod().getName() = "unlock" and
-        postDominates(unlockAction, this)
+        postDominates(unlockAction.getControlFlowNode(), this.getControlFlowNode())
       )
     )
   }

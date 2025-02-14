@@ -1,6 +1,7 @@
 /**
  * Provides classes for reasoning about Spring View Manipulation vulnerabilities
  */
+deprecated module;
 
 import java
 import semmle.code.java.dataflow.FlowSources
@@ -40,26 +41,24 @@ class PortletRenderRequestMethod extends Method {
  * A taint-tracking configuration for unsafe user input
  * that can lead to Spring View Manipulation vulnerabilities.
  */
-class SpringViewManipulationConfig extends TaintTracking::Configuration {
-  SpringViewManipulationConfig() { this = "Spring View Manipulation Config" }
-
-  override predicate isSource(DataFlow::Node source) {
-    source instanceof RemoteFlowSource or
+module SpringViewManipulationConfig implements DataFlow::ConfigSig {
+  predicate isSource(DataFlow::Node source) {
+    source instanceof ActiveThreatModelSource or
     source instanceof WebRequestSource or
-    source.asExpr().(MethodAccess).getMethod() instanceof PortletRenderRequestMethod
+    source.asExpr().(MethodCall).getMethod() instanceof PortletRenderRequestMethod
   }
 
-  override predicate isSink(DataFlow::Node sink) { sink instanceof SpringViewManipulationSink }
+  predicate isSink(DataFlow::Node sink) { sink instanceof SpringViewManipulationSink }
 
-  override predicate isSanitizer(DataFlow::Node node) {
+  predicate isBarrier(DataFlow::Node node) {
     // Block flows like
     // ```
     // a = "redirect:" + taint`
     // ```
     exists(AddExpr e, StringLiteral sl |
-      node.asExpr() = e.getControlFlowNode().getASuccessor*() and
+      node.asExpr() = e.getControlFlowNode().getASuccessor*().asExpr() and
       sl = e.getLeftOperand*() and
-      sl.getRepresentedString().matches(["redirect:%", "ajaxredirect:%", "forward:%"])
+      sl.getValue().matches(["redirect:%", "ajaxredirect:%", "forward:%"])
     )
     or
     // Block flows like
@@ -79,7 +78,7 @@ class SpringViewManipulationConfig extends TaintTracking::Configuration {
         sl = ca.getQualifier()
       ) and
       ca = getAStringCombiningCall() and
-      sl.getRepresentedString().matches(["redirect:%", "ajaxredirect:%", "forward:%"])
+      sl.getValue().matches(["redirect:%", "ajaxredirect:%", "forward:%"])
     |
       exists(Call cc | DataFlow::localExprFlow(ca.getQualifier(), cc.getQualifier()) |
         cc = node.asExpr()
@@ -87,6 +86,8 @@ class SpringViewManipulationConfig extends TaintTracking::Configuration {
     )
   }
 }
+
+module SpringViewManipulationFlow = TaintTracking::Global<SpringViewManipulationConfig>;
 
 private Call getAStringCombiningCall() {
   exists(StringCombiningMethod m | result = m.getAReference())

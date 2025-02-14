@@ -1,7 +1,8 @@
 name: codeql/python-tests
-version: 0.0.2
+groups: [python, test]
 dependencies:
-    codeql/python-all: "*"
-    codeql/python-queries: "*"
+    codeql/python-all: ${workspace}
+    codeql/python-queries: ${workspace}
 extractor: python
 tests: .
+warnOnImplicitThis: true

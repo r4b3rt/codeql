@@ -26,6 +26,14 @@
 | (?!not-this)^[A-Z_]+$ | qualified | 13 | 20 |
 | (?!not-this)^[A-Z_]+$ | sequence | 0 | 21 |
 | (?!not-this)^[A-Z_]+$ | sequence | 3 | 11 |
+| (?-imsx:a+) | char | 2 | 3 |
+| (?-imsx:a+) | char | 3 | 4 |
+| (?-imsx:a+) | char | 4 | 5 |
+| (?-imsx:a+) | char | 5 | 6 |
+| (?-imsx:a+) | char | 6 | 7 |
+| (?-imsx:a+) | char | 7 | 8 |
+| (?-imsx:a+) | char | 8 | 9 |
+| (?-imsx:a+) | qualified | 8 | 10 |
 | (?:(?:\n\r?)\|^)( *)\\S | ^ | 11 | 12 |
 | (?:(?:\n\r?)\|^)( *)\\S | char | 6 | 7 |
 | (?:(?:\n\r?)\|^)( *)\\S | char | 7 | 8 |
@@ -69,18 +77,47 @@
 | (?:[^%]\|^)?%\\((\\w*)\\)[a-z] | sequence | 0 | 26 |
 | (?:[^%]\|^)?%\\((\\w*)\\)[a-z] | sequence | 3 | 7 |
 | (?:[^%]\|^)?%\\((\\w*)\\)[a-z] | sequence | 8 | 9 |
+| (?Li)a+ | char | 5 | 6 |
+| (?Li)a+ | empty group | 0 | 5 |
+| (?Li)a+ | qualified | 5 | 7 |
+| (?Li)a+ | sequence | 0 | 7 |
 | (?P<name>[\\w]+)\| | char | 10 | 12 |
 | (?P<name>[\\w]+)\| | char-set | 9 | 13 |
 | (?P<name>[\\w]+)\| | choice | 0 | 16 |
 | (?P<name>[\\w]+)\| | non-empty group | 0 | 15 |
 | (?P<name>[\\w]+)\| | qualified | 9 | 14 |
 | (?P<name>[\\w]+)\| | sequence | 0 | 15 |
+| (?a-imsx:a+) | char | 3 | 4 |
+| (?a-imsx:a+) | char | 4 | 5 |
+| (?a-imsx:a+) | char | 5 | 6 |
+| (?a-imsx:a+) | char | 6 | 7 |
+| (?a-imsx:a+) | char | 7 | 8 |
+| (?a-imsx:a+) | char | 8 | 9 |
+| (?a-imsx:a+) | char | 9 | 10 |
+| (?a-imsx:a+) | non-empty group | 0 | 12 |
+| (?a-imsx:a+) | qualified | 9 | 11 |
+| (?a-imsx:a+) | sequence | 0 | 12 |
+| (?a-imsx:a+) | sequence | 3 | 11 |
+| (?aimsx)a+ | char | 8 | 9 |
+| (?aimsx)a+ | empty group | 0 | 8 |
+| (?aimsx)a+ | qualified | 8 | 10 |
+| (?aimsx)a+ | sequence | 0 | 10 |
+| (?aimsx:a+) | char | 7 | 8 |
+| (?aimsx:a+) | char | 8 | 9 |
+| (?aimsx:a+) | non-empty group | 0 | 11 |
+| (?aimsx:a+) | qualified | 8 | 10 |
+| (?aimsx:a+) | sequence | 0 | 11 |
+| (?aimsx:a+) | sequence | 7 | 10 |
 | (?m)^(?!$) | $ | 8 | 9 |
 | (?m)^(?!$) | ^ | 4 | 5 |
 | (?m)^(?!$) | empty group | 0 | 4 |
 | (?m)^(?!$) | empty group | 5 | 10 |
 | (?m)^(?!$) | sequence | 0 | 10 |
 | (?m)^(?!$) | sequence | 8 | 9 |
+| (?ui)a+ | char | 5 | 6 |
+| (?ui)a+ | empty group | 0 | 5 |
+| (?ui)a+ | qualified | 5 | 7 |
+| (?ui)a+ | sequence | 0 | 7 |
 | (\\033\|~{) | char | 1 | 5 |
 | (\\033\|~{) | char | 6 | 7 |
 | (\\033\|~{) | char | 7 | 8 |
@@ -116,7 +153,7 @@
 | \\+0 | char | 0 | 2 |
 | \\+0 | char | 2 | 3 |
 | \\+0 | sequence | 0 | 3 |
-| \\A[+-]?\\d+ | char | 0 | 2 |
+| \\A[+-]?\\d+ | \\A | 0 | 2 |
 | \\A[+-]?\\d+ | char | 3 | 4 |
 | \\A[+-]?\\d+ | char | 4 | 5 |
 | \\A[+-]?\\d+ | char | 7 | 9 |
@@ -124,6 +161,12 @@
 | \\A[+-]?\\d+ | qualified | 2 | 7 |
 | \\A[+-]?\\d+ | qualified | 7 | 10 |
 | \\A[+-]?\\d+ | sequence | 0 | 10 |
+| \\Afoo\\Z | \\A | 0 | 2 |
+| \\Afoo\\Z | \\Z | 5 | 7 |
+| \\Afoo\\Z | char | 2 | 3 |
+| \\Afoo\\Z | char | 3 | 4 |
+| \\Afoo\\Z | char | 4 | 5 |
+| \\Afoo\\Z | sequence | 0 | 7 |
 | \\[(?P<txt>[^[]*)\\]\\((?P<uri>[^)]*) | char | 0 | 2 |
 | \\[(?P<txt>[^[]*)\\]\\((?P<uri>[^)]*) | char | 12 | 13 |
 | \\[(?P<txt>[^[]*)\\]\\((?P<uri>[^)]*) | char | 16 | 18 |
@@ -148,6 +191,12 @@
 | \\\|\\[\\][123]\|\\{\\} | choice | 0 | 16 |
 | \\\|\\[\\][123]\|\\{\\} | sequence | 0 | 11 |
 | \\\|\\[\\][123]\|\\{\\} | sequence | 12 | 16 |
+| \\bfoo\\B | \\B | 5 | 7 |
+| \\bfoo\\B | \\b | 0 | 2 |
+| \\bfoo\\B | char | 2 | 3 |
+| \\bfoo\\B | char | 3 | 4 |
+| \\bfoo\\B | char | 4 | 5 |
+| \\bfoo\\B | sequence | 0 | 7 |
 | \|x | char | 1 | 2 |
 | \|x | choice | 0 | 2 |
 | \|x | sequence | 1 | 2 |

@@ -8,11 +8,12 @@
  * @precision high
  * @id java/unsafe-deserialization-spring-exporter-in-configuration-class
  * @tags security
+ *       experimental
  *       external/cwe/cwe-502
  */
 
 import java
-import UnsafeSpringExporterLib
+deprecated import UnsafeSpringExporterLib
 
 /**
  * Holds if `type` is a Spring configuration that declares beans.
@@ -33,7 +34,7 @@ private predicate isConfigurationAnnotation(Annotation annotation) {
 /**
  * A method that initializes a unsafe bean based on `RemoteInvocationSerializingExporter`.
  */
-private class UnsafeBeanInitMethod extends Method {
+deprecated private class UnsafeBeanInitMethod extends Method {
   string identifier;
 
   UnsafeBeanInitMethod() {
@@ -42,7 +43,7 @@ private class UnsafeBeanInitMethod extends Method {
     exists(Annotation a | this.getAnAnnotation() = a |
       a.getType().hasQualifiedName("org.springframework.context.annotation", "Bean") and
       if a.getValue("name") instanceof StringLiteral
-      then identifier = a.getValue("name").(StringLiteral).getRepresentedString()
+      then identifier = a.getValue("name").(StringLiteral).getValue()
       else identifier = this.getName()
     )
   }
@@ -53,6 +54,6 @@ private class UnsafeBeanInitMethod extends Method {
   string getBeanIdentifier() { result = identifier }
 }
 
-from UnsafeBeanInitMethod method
-select method,
-  "Unsafe deserialization in a Spring exporter bean '" + method.getBeanIdentifier() + "'"
+deprecated query predicate problems(UnsafeBeanInitMethod method, string message) {
+  message = "Unsafe deserialization in a Spring exporter bean '" + method.getBeanIdentifier() + "'."
+}

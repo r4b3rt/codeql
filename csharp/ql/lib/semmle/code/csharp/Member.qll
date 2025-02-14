@@ -4,22 +4,76 @@ import Callable
 import Element
 import Modifier
 import Variable
-private import dotnet
 private import Implements
 private import TypeRef
+private import commons.QualifiedName
+
+private module QualifiedNameInput implements QualifiedNameInputSig {
+  string getUnboundGenericSuffix(UnboundGeneric ug) {
+    result = "<" + strictconcat(int i | exists(ug.getTypeParameter(i)) | "", ",") + ">"
+  }
+}
+
+private module FullyQualifiedNameInput implements QualifiedNameInputSig {
+  string getUnboundGenericSuffix(UnboundGeneric ug) {
+    result = "`" + ug.getNumberOfTypeParameters()
+  }
+}
 
 /**
  * A declaration.
  *
  * Either a modifiable (`Modifiable`) or an assignable (`Assignable`).
  */
-class Declaration extends DotNet::Declaration, Element, @declaration {
-  override ValueOrRefType getDeclaringType() { none() }
+class Declaration extends NamedElement, @declaration {
+  /** Gets the name of this declaration, without additional decoration such as `<...>`. */
+  string getUndecoratedName() { none() }
+
+  /** Holds if this element has undecorated name 'name'. */
+  final predicate hasUndecoratedName(string name) { name = this.getUndecoratedName() }
+
+  /**
+   * Gets the unbound version of this declaration, that is, the declaration where
+   * all type arguments have been removed. For example, in
+   *
+   * ```csharp
+   * class C<T>
+   * {
+   *     class Nested
+   *     {
+   *     }
+   *
+   *     void Method<S>() { }
+   * }
+   * ```
+   *
+   * we have the following
+   *
+   * | Declaration             | Unbound declaration |
+   * |-------------------------|---------------------|
+   * | `C<int>`                | ``C`1``             |
+   * | ``C`1.Nested``          | ``C`1.Nested``      |
+   * | `C<int>.Nested`         | ``C`1.Nested``      |
+   * | ``C`1.Method`1``        | ``C`1.Method`1``    |
+   * | ``C<int>.Method`1``     | ``C`1.Method`1``    |
+   * | `C<int>.Method<string>` | ``C`1.Method`1``    |
+   */
+  Declaration getUnboundDeclaration() { result = this }
+
+  /** Holds if this declaration is unbound. */
+  final predicate isUnboundDeclaration() { this.getUnboundDeclaration() = this }
+
+  /** Gets the type containing this declaration, if any. */
+  ValueOrRefType getDeclaringType() { none() }
 
   /** Holds if this declaration is unconstructed and in source code. */
   final predicate isSourceDeclaration() { this.fromSource() and this.isUnboundDeclaration() }
 
   override string toString() { result = this.getName() }
+
+  override predicate hasFullyQualifiedName(string qualifier, string name) {
+    QualifiedName<FullyQualifiedNameInput>::hasQualifiedName(this, qualifier, name)
+  }
 
   /**
    * Gets the fully qualified name of this declaration, including types, for example
@@ -33,12 +87,13 @@ class Declaration extends DotNet::Declaration, Element, @declaration {
    * }
    * ```
    */
-  string getQualifiedNameWithTypes() {
-    exists(string qual |
-      qual = this.getDeclaringType().getQualifiedName() and
+  deprecated string getFullyQualifiedNameWithTypes() {
+    exists(string fullqual, string qual, string name |
+      this.getDeclaringType().hasFullyQualifiedName(qual, name) and
+      fullqual = getQualifiedName(qual, name) and
       if this instanceof NestedType
-      then result = qual + "+" + this.toStringWithTypes()
-      else result = qual + "." + this.toStringWithTypes()
+      then result = fullqual + "+" + this.toStringWithTypes()
+      else result = fullqual + "." + this.toStringWithTypes()
     )
   }
 
@@ -90,12 +145,29 @@ class Modifiable extends Declaration, @modifiable {
   /** Holds if this declaration is `const`. */
   predicate isConst() { this.hasModifier("const") }
 
+  /** Holds if this declaration has the modifier `required`. */
+  predicate isRequired() { this.hasModifier("required") }
+
+  /** Holds if this declaration is `file` local. */
+  predicate isFile() { this.hasModifier("file") }
+
   /** Holds if this declaration is `unsafe`. */
   predicate isUnsafe() {
-    this.hasModifier("unsafe") or
-    this.(Parameterizable).getAParameter().getType() instanceof PointerType or
-    this.(Property).getType() instanceof PointerType or
-    this.(Callable).getReturnType() instanceof PointerType
+    this.hasModifier("unsafe")
+    or
+    exists(Type t, Type child |
+      t = this.(Parameterizable).getAParameter().getType() or
+      t = this.(Property).getType() or
+      t = this.(Callable).getReturnType() or
+      t = this.(DelegateType).getReturnType()
+    |
+      child = t.getAChild*() and
+      (
+        child instanceof PointerType
+        or
+        child instanceof FunctionPointerType
+      )
+    )
   }
 
   /** Holds if this declaration is `async`. */
@@ -117,7 +189,7 @@ class Modifiable extends Declaration, @modifiable {
    * Note that explicit interface implementations are also considered effectively
    * `private` if the implemented interface is itself effectively `private`. Finally,
    * `private protected` members are not considered effectively `private`, because
-   * they can be overriden within the declaring assembly.
+   * they can be overridden within the declaring assembly.
    */
   predicate isEffectivelyPrivate() {
     this.isReallyPrivate() or
@@ -143,7 +215,7 @@ class Modifiable extends Declaration, @modifiable {
    * considered. Explicit interface implementations are also considered effectively
    * `internal` if the implemented interface is itself effectively `internal`. Finally,
    * `internal protected` members are not considered effectively `internal`, because
-   * they can be overriden outside the declaring assembly.
+   * they can be overridden outside the declaring assembly.
    */
   predicate isEffectivelyInternal() {
     this.isReallyInternal() or
@@ -155,78 +227,57 @@ class Modifiable extends Declaration, @modifiable {
    * Holds if this declaration is effectively `public`, meaning that it can be
    * referenced outside the declaring assembly.
    */
-  predicate isEffectivelyPublic() { not isEffectivelyPrivate() and not isEffectivelyInternal() }
+  predicate isEffectivelyPublic() {
+    not this.isEffectivelyPrivate() and not this.isEffectivelyInternal()
+  }
 }
 
 /** A declaration that is a member of a type. */
-class Member extends DotNet::Member, Modifiable, @member {
+class Member extends Modifiable, @member {
   /** Gets an access to this member. */
   MemberAccess getAnAccess() { result.getTarget() = this }
 
-  override predicate isPublic() { Modifiable.super.isPublic() }
-
-  override predicate isProtected() { Modifiable.super.isProtected() }
-
-  override predicate isPrivate() { Modifiable.super.isPrivate() }
-
-  override predicate isInternal() { Modifiable.super.isInternal() }
-
-  override predicate isSealed() { Modifiable.super.isSealed() }
-
-  override predicate isAbstract() { Modifiable.super.isAbstract() }
-
-  override predicate isStatic() { Modifiable.super.isStatic() }
+  /**
+   * Holds if this member has name `name` and is defined in type `type`
+   * with namespace `namespace`.
+   */
+  cached
+  final predicate hasFullyQualifiedName(string namespace, string type, string name) {
+    QualifiedName<FullyQualifiedNameInput>::hasQualifiedName(this, namespace, type, name)
+  }
 }
 
+private class TOverridable = @virtualizable or @callable_accessor;
+
 /**
- * A member where the `virtual` modifier is valid. That is, a method,
- * a property, an indexer, or an event.
+ * A declaration that can be overridden or implemented. That is, a method,
+ * a property, an indexer, an event, an accessor, or an operator.
  *
- * Equivalently, these are the members that can be defined in an interface.
+ * Unlike `Virtualizable`, this class includes accessors.
  */
-class Virtualizable extends Member, @virtualizable {
-  /** Holds if this member has the modifier `override`. */
-  predicate isOverride() { this.hasModifier("override") }
-
-  /** Holds if this member is `virtual`. */
-  predicate isVirtual() { this.hasModifier("virtual") }
-
-  override predicate isPublic() {
-    Member.super.isPublic() or
-    implementsExplicitInterface()
-  }
-
-  override predicate isPrivate() {
-    super.isPrivate() and
-    not implementsExplicitInterface()
-  }
-
+class Overridable extends Declaration, TOverridable {
   /**
    * Gets any interface this member explicitly implements; this only applies
    * to members that can be declared on an interface, i.e. methods, properties,
    * indexers and events.
    */
-  Interface getExplicitlyImplementedInterface() { explicitly_implements(this, getTypeRef(result)) }
+  Interface getExplicitlyImplementedInterface() {
+    explicitly_implements(this, result)
+    or
+    not explicitly_implements(this, any(Interface i)) and
+    explicitly_implements(this, getTypeRef(result))
+  }
 
   /**
    * Holds if this member implements an interface member explicitly.
    */
-  predicate implementsExplicitInterface() { exists(getExplicitlyImplementedInterface()) }
+  predicate implementsExplicitInterface() { exists(this.getExplicitlyImplementedInterface()) }
 
   /** Holds if this member can be overridden or implemented. */
-  predicate isOverridableOrImplementable() {
-    not isSealed() and
-    not getDeclaringType().isSealed() and
-    (
-      isVirtual() or
-      isOverride() or
-      isAbstract() or
-      getDeclaringType() instanceof Interface
-    )
-  }
+  predicate isOverridableOrImplementable() { none() }
 
   /** Gets the member that is immediately overridden by this member, if any. */
-  Virtualizable getOverridee() {
+  Overridable getOverridee() {
     overrides(this, result)
     or
     // For accessors (which are `Callable`s), the extractor generates entries
@@ -240,13 +291,13 @@ class Virtualizable extends Member, @virtualizable {
   }
 
   /** Gets a member that immediately overrides this member, if any. */
-  Virtualizable getAnOverrider() { this = result.getOverridee() }
+  Overridable getAnOverrider() { this = result.getOverridee() }
 
   /** Holds if this member is overridden by some other member. */
-  predicate isOverridden() { exists(getAnOverrider()) }
+  predicate isOverridden() { exists(this.getAnOverrider()) }
 
   /** Holds if this member overrides another member. */
-  predicate overrides() { exists(getOverridee()) }
+  predicate overrides() { exists(this.getOverridee()) }
 
   /**
    * Gets the interface member that is immediately implemented by this member, if any.
@@ -271,10 +322,10 @@ class Virtualizable extends Member, @virtualizable {
    * `A.M.getImplementee(B) = I.M` and
    * `C.M.getImplementee(C) = I.M`.
    */
-  Virtualizable getImplementee(ValueOrRefType t) { implements(this, result, t) }
+  Overridable getImplementee(ValueOrRefType t) { implements(this, result, t) }
 
   /** Gets the interface member that is immediately implemented by this member, if any. */
-  Virtualizable getImplementee() { result = getImplementee(_) }
+  Overridable getImplementee() { result = this.getImplementee(_) }
 
   /**
    * Gets a member that immediately implements this interface member, if any.
@@ -299,10 +350,10 @@ class Virtualizable extends Member, @virtualizable {
    * `I.M.getAnImplementor(B) = A.M` and
    * `I.M.getAnImplementor(C) = C.M`.
    */
-  Virtualizable getAnImplementor(ValueOrRefType t) { this = result.getImplementee(t) }
+  Overridable getAnImplementor(ValueOrRefType t) { this = result.getImplementee(t) }
 
   /** Gets a member that immediately implements this interface member, if any. */
-  Virtualizable getAnImplementor() { this = result.getImplementee() }
+  Overridable getAnImplementor() { this = result.getImplementee() }
 
   /**
    * Gets an interface member that is (transitively) implemented by this
@@ -332,14 +383,14 @@ class Virtualizable extends Member, @virtualizable {
    * - If this member is `D.M` then `I.M = getAnUltimateImplementee()`.
    */
   pragma[nomagic]
-  Virtualizable getAnUltimateImplementee() {
-    exists(Virtualizable implementation, ValueOrRefType implementationType |
+  Overridable getAnUltimateImplementee() {
+    exists(Overridable implementation, ValueOrRefType implementationType |
       implements(implementation, result, implementationType)
     |
       this = implementation
       or
-      getOverridee+() = implementation and
-      getDeclaringType().getABaseType+() = implementationType
+      this.getOverridee+() = implementation and
+      this.getDeclaringType().getABaseType+() = implementationType
     )
   }
 
@@ -352,22 +403,67 @@ class Virtualizable extends Member, @virtualizable {
    * Note that this is generally *not* equivalent with
    * `getImplementor().getAnOverrider*()` (see `getImplementee`).
    */
-  Virtualizable getAnUltimateImplementor() { this = result.getAnUltimateImplementee() }
+  Overridable getAnUltimateImplementor() { this = result.getAnUltimateImplementee() }
 
   /** Holds if this interface member is implemented by some other member. */
-  predicate isImplemented() { exists(getAnImplementor()) }
+  predicate isImplemented() { exists(this.getAnImplementor()) }
 
   /** Holds if this member implements (transitively) an interface member. */
-  predicate implements() { exists(getAnUltimateImplementee()) }
+  predicate implements() { exists(this.getAnUltimateImplementee()) }
+
+  /**
+   * Holds if this member overrides or implements (transitively)
+   * `that` member.
+   */
+  predicate overridesOrImplements(Overridable that) {
+    this.getOverridee+() = that or
+    this.getAnUltimateImplementee() = that
+  }
 
   /**
    * Holds if this member overrides or implements (reflexively, transitively)
    * `that` member.
    */
-  predicate overridesOrImplementsOrEquals(Virtualizable that) {
+  predicate overridesOrImplementsOrEquals(Overridable that) {
     this = that or
-    getOverridee+() = that or
-    getAnUltimateImplementee() = that
+    this.overridesOrImplements(that)
+  }
+}
+
+/**
+ * A member where the `virtual` modifier is valid. That is, a method,
+ * a property, an indexer, an event, or an operator.
+ *
+ * Equivalently, these are the members that can be defined in an interface.
+ *
+ * Unlike `Overridable`, this class excludes accessors.
+ */
+class Virtualizable extends Overridable, Member, @virtualizable {
+  /** Holds if this member has the modifier `override`. */
+  predicate isOverride() { this.hasModifier("override") }
+
+  /** Holds if this member is `virtual`. */
+  predicate isVirtual() { this.hasModifier("virtual") }
+
+  override predicate isPublic() {
+    Member.super.isPublic() or
+    this.implementsExplicitInterface()
+  }
+
+  override predicate isPrivate() {
+    super.isPrivate() and
+    not this.implementsExplicitInterface()
+  }
+
+  override predicate isOverridableOrImplementable() {
+    not this.isSealed() and
+    not this.getDeclaringType().isSealed() and
+    (
+      this.isVirtual() or
+      this.isOverride() or
+      this.isAbstract() or
+      this.getDeclaringType() instanceof Interface
+    )
   }
 }
 
@@ -375,18 +471,32 @@ class Virtualizable extends Member, @virtualizable {
  * A parameterizable declaration. Either a callable (`Callable`), a delegate
  * type (`DelegateType`), or an indexer (`Indexer`).
  */
-class Parameterizable extends DotNet::Parameterizable, Declaration, @parameterizable {
-  override Parameter getRawParameter(int i) { params(result, _, _, i, _, this, _) }
+class Parameterizable extends Declaration, @parameterizable {
+  /** Gets raw parameter `i`, including the `this` parameter at index 0. */
+  Parameter getRawParameter(int i) { params(result, _, _, i, _, this, _) }
 
-  override Parameter getParameter(int i) { params(result, _, _, i, _, this, _) }
+  /** Gets the `i`th parameter, excluding the `this` parameter. */
+  Parameter getParameter(int i) { params(result, _, _, i, _, this, _) }
+
+  /** Gets the number of parameters of this callable. */
+  int getNumberOfParameters() { result = count(this.getAParameter()) }
+
+  /** Holds if this declaration has no parameters. */
+  predicate hasNoParameters() { not exists(this.getAParameter()) }
+
+  /** Gets a parameter, if any. */
+  Parameter getAParameter() { result = this.getParameter(_) }
+
+  /** Gets a raw parameter (including the qualifier), if any. */
+  final Parameter getARawParameter() { result = this.getRawParameter(_) }
 
   /**
-   * Gets the name of this parameter followed by its type, possibly prefixed
+   * Gets the type of the parameter, possibly prefixed
    * with `out`, `ref`, or `params`, where appropriate.
    */
   private string parameterTypeToString(int i) {
     exists(Parameter p, string prefix |
-      p = getParameter(i) and
+      p = this.getParameter(i) and
       result = prefix + p.getType().toStringWithTypes()
     |
       if p.isOut()
@@ -407,6 +517,7 @@ class Parameterizable extends DotNet::Parameterizable, Declaration, @parameteriz
    */
   language[monotonicAggregates]
   string parameterTypesToString() {
-    result = concat(int i | exists(getParameter(i)) | parameterTypeToString(i), ", " order by i)
+    result =
+      concat(int i | exists(this.getParameter(i)) | this.parameterTypeToString(i), ", " order by i)
   }
 }

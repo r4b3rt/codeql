@@ -7,11 +7,14 @@ import semmle.code.cpp.models.interfaces.ArrayFunction
 import semmle.code.cpp.models.interfaces.DataFlow
 import semmle.code.cpp.models.interfaces.Taint
 import semmle.code.cpp.models.interfaces.SideEffect
+import semmle.code.cpp.models.interfaces.NonThrowing
 
 /**
  * The standard function `strcpy` and its wide, sized, and Microsoft variants.
  */
-class StrcpyFunction extends ArrayFunction, DataFlowFunction, TaintFunction, SideEffectFunction {
+class StrcpyFunction extends ArrayFunction, DataFlowFunction, TaintFunction, SideEffectFunction,
+  NonCppThrowingFunction
+{
   StrcpyFunction() {
     this.hasGlobalOrStdOrBslName([
         "strcpy", // strcpy(dst, src)
@@ -32,7 +35,8 @@ class StrcpyFunction extends ArrayFunction, DataFlowFunction, TaintFunction, Sid
         "wcsxfrm_l", // _strxfrm_l(dest, src, max_amount, locale)
         "_mbsnbcpy", // _mbsnbcpy(dest, src, max_amount)
         "stpcpy", // stpcpy(dest, src)
-        "stpncpy" // stpcpy(dest, src, max_amount)
+        "stpncpy", // stpncpy(dest, src, max_amount)
+        "strlcpy" // strlcpy(dst, src, dst_size)
       ])
     or
     (
@@ -45,22 +49,27 @@ class StrcpyFunction extends ArrayFunction, DataFlowFunction, TaintFunction, Sid
     ) and
     // exclude the 2-parameter template versions
     // that find the size of a fixed size destination buffer.
-    getNumberOfParameters() = 3
+    this.getNumberOfParameters() = 3
   }
 
   /**
    * Holds if this is one of the `strcpy_s` variants.
    */
-  private predicate isSVariant() { getName().matches("%\\_s") }
+  private predicate isSVariant() { this.getName().matches("%\\_s") }
+
+  /**
+   * Holds if the function returns the total length the string would have had if the size was unlimited.
+   */
+  private predicate returnsTotalLength() { this.getName() = "strlcpy" }
 
   /**
    * Gets the index of the parameter that is the maximum size of the copy (in characters).
    */
   int getParamSize() {
-    if isSVariant()
+    if this.isSVariant()
     then result = 1
     else (
-      getName().matches(["%ncpy%", "%nbcpy%", "%xfrm%"]) and
+      this.getName().matches(["%ncpy%", "%nbcpy%", "%xfrm%", "strlcpy"]) and
       result = 2
     )
   }
@@ -68,50 +77,52 @@ class StrcpyFunction extends ArrayFunction, DataFlowFunction, TaintFunction, Sid
   /**
    * Gets the index of the parameter that is the source of the copy.
    */
-  int getParamSrc() { if isSVariant() then result = 2 else result = 1 }
+  int getParamSrc() { if this.isSVariant() then result = 2 else result = 1 }
 
   /**
    * Gets the index of the parameter that is the destination of the copy.
    */
   int getParamDest() { result = 0 }
 
-  override predicate hasArrayInput(int bufParam) { bufParam = getParamSrc() }
+  override predicate hasArrayInput(int bufParam) { bufParam = this.getParamSrc() }
 
-  override predicate hasArrayOutput(int bufParam) { bufParam = getParamDest() }
+  override predicate hasArrayOutput(int bufParam) { bufParam = this.getParamDest() }
 
-  override predicate hasArrayWithNullTerminator(int bufParam) { bufParam = getParamSrc() }
+  override predicate hasArrayWithNullTerminator(int bufParam) { bufParam = this.getParamSrc() }
 
   override predicate hasArrayWithVariableSize(int bufParam, int countParam) {
-    bufParam = getParamDest() and
-    countParam = getParamSize()
+    bufParam = this.getParamDest() and
+    countParam = this.getParamSize()
   }
 
   override predicate hasArrayWithUnknownSize(int bufParam) {
-    not exists(getParamSize()) and
-    bufParam = getParamDest()
+    not exists(this.getParamSize()) and
+    bufParam = this.getParamDest()
   }
 
   override predicate hasDataFlow(FunctionInput input, FunctionOutput output) {
-    not exists(getParamSize()) and
-    input.isParameterDeref(getParamSrc()) and
-    output.isParameterDeref(getParamDest())
+    not exists(this.getParamSize()) and
+    input.isParameterDeref(this.getParamSrc()) and
+    output.isParameterDeref(this.getParamDest())
     or
-    not exists(getParamSize()) and
-    input.isParameterDeref(getParamSrc()) and
+    not exists(this.getParamSize()) and
+    input.isParameterDeref(this.getParamSrc()) and
     output.isReturnValueDeref()
     or
-    input.isParameter(getParamDest()) and
+    not this.returnsTotalLength() and
+    input.isParameter(this.getParamDest()) and
     output.isReturnValue()
   }
 
   override predicate hasTaintFlow(FunctionInput input, FunctionOutput output) {
     // these may do only a partial copy of the input buffer to the output
     // buffer
-    exists(getParamSize()) and
-    input.isParameter(getParamSrc()) and
+    exists(this.getParamSize()) and
+    input.isParameterDeref(this.getParamSrc()) and
     (
-      output.isParameterDeref(getParamDest()) or
-      output.isReturnValueDeref()
+      output.isParameterDeref(this.getParamDest())
+      or
+      not this.returnsTotalLength() and output.isReturnValueDeref()
     )
   }
 
@@ -120,18 +131,18 @@ class StrcpyFunction extends ArrayFunction, DataFlowFunction, TaintFunction, Sid
   override predicate hasOnlySpecificWriteSideEffects() { any() }
 
   override predicate hasSpecificWriteSideEffect(ParameterIndex i, boolean buffer, boolean mustWrite) {
-    i = getParamDest() and
+    i = this.getParamDest() and
     buffer = true and
     mustWrite = false
   }
 
   override predicate hasSpecificReadSideEffect(ParameterIndex i, boolean buffer) {
-    i = getParamSrc() and
+    i = this.getParamSrc() and
     buffer = true
   }
 
   override ParameterIndex getParameterSizeIndex(ParameterIndex i) {
-    i = getParamDest() and
-    result = getParamSize()
+    i = this.getParamDest() and
+    result = this.getParamSize()
   }
 }

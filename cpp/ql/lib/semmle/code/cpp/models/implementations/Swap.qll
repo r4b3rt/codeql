@@ -26,15 +26,15 @@ private class Swap extends DataFlowFunction {
  * obj1.swap(obj2)
  * ```
  */
-private class MemberSwap extends TaintFunction, MemberFunction, AliasFunction {
+private class MemberSwap extends DataFlowFunction, MemberFunction, AliasFunction {
   MemberSwap() {
     this.hasName("swap") and
     this.getNumberOfParameters() = 1 and
     this.getParameter(0).getType().(ReferenceType).getBaseType().getUnspecifiedType() =
-      getDeclaringType()
+      this.getDeclaringType()
   }
 
-  override predicate hasTaintFlow(FunctionInput input, FunctionOutput output) {
+  override predicate hasDataFlow(FunctionInput input, FunctionOutput output) {
     input.isQualifierObject() and
     output.isParameterDeref(0)
     or

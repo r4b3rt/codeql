@@ -2,9 +2,9 @@ import java
 
 /** A subclass of `PrimitiveType` with width-based ordering methods. */
 class OrdPrimitiveType extends PrimitiveType {
-  predicate widerThan(OrdPrimitiveType that) { getWidthRank() > that.getWidthRank() }
+  predicate widerThan(OrdPrimitiveType that) { this.getWidthRank() > that.getWidthRank() }
 
-  predicate widerThanOrEqualTo(OrdPrimitiveType that) { getWidthRank() >= that.getWidthRank() }
+  predicate widerThanOrEqualTo(OrdPrimitiveType that) { this.getWidthRank() >= that.getWidthRank() }
 
   OrdPrimitiveType maxType(OrdPrimitiveType that) {
     this.widerThan(that) and result = this
@@ -80,11 +80,19 @@ class ArithExpr extends Expr {
     (
       this instanceof UnaryAssignExpr or
       this instanceof AddExpr or
+      this instanceof AssignAddExpr or
       this instanceof MulExpr or
+      this instanceof AssignMulExpr or
       this instanceof SubExpr or
-      this instanceof DivExpr
+      this instanceof AssignSubExpr or
+      this instanceof DivExpr or
+      this instanceof AssignDivExpr
     ) and
-    forall(Expr e | e = this.(BinaryExpr).getAnOperand() or e = this.(UnaryAssignExpr).getExpr() |
+    forall(Expr e |
+      e = this.(BinaryExpr).getAnOperand() or
+      e = this.(UnaryAssignExpr).getExpr() or
+      e = this.(AssignOp).getSource()
+    |
       e.getType() instanceof NumType
     )
   }
@@ -103,17 +111,21 @@ class ArithExpr extends Expr {
    */
   Expr getLeftOperand() {
     result = this.(BinaryExpr).getLeftOperand() or
-    result = this.(UnaryAssignExpr).getExpr()
+    result = this.(UnaryAssignExpr).getExpr() or
+    result = this.(AssignOp).getDest()
   }
 
   /**
    * Gets the right-hand operand if this is a binary expression.
    */
-  Expr getRightOperand() { result = this.(BinaryExpr).getRightOperand() }
+  Expr getRightOperand() {
+    result = this.(BinaryExpr).getRightOperand() or result = this.(AssignOp).getRhs()
+  }
 
   /** Gets an operand of this arithmetic expression. */
   Expr getAnOperand() {
     result = this.(BinaryExpr).getAnOperand() or
-    result = this.(UnaryAssignExpr).getExpr()
+    result = this.(UnaryAssignExpr).getExpr() or
+    result = this.(AssignOp).getSource()
   }
 }

@@ -21,8 +21,8 @@ private class PredictableApacheRandomStringUtilsMethod extends Method {
   }
 }
 
-private class PredictableApacheRandomStringUtilsMethodAccess extends MethodAccess {
-  PredictableApacheRandomStringUtilsMethodAccess() {
+private class PredictableApacheRandomStringUtilsMethodCall extends MethodCall {
+  PredictableApacheRandomStringUtilsMethodCall() {
     this.getMethod() instanceof PredictableApacheRandomStringUtilsMethod
   }
 }
@@ -30,7 +30,7 @@ private class PredictableApacheRandomStringUtilsMethodAccess extends MethodAcces
 private class VulnerableJHipsterRandomUtilClass extends Class {
   VulnerableJHipsterRandomUtilClass() {
     // The package name that JHipster generated the 'RandomUtil' class in was dynamic. Thus 'hasQualifiedName' can not be used here.
-    getName() = "RandomUtil"
+    this.getName() = "RandomUtil"
   }
 }
 
@@ -41,7 +41,7 @@ private class VulnerableJHipsterRandomUtilMethod extends Method {
     this.getReturnType() instanceof TypeString and
     exists(ReturnStmt s |
       s = this.getBody().(SingletonBlock).getStmt() and
-      s.getResult() instanceof PredictableApacheRandomStringUtilsMethodAccess
+      s.getResult() instanceof PredictableApacheRandomStringUtilsMethodCall
     )
   }
 }

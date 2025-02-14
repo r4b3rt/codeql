@@ -134,7 +134,7 @@ class MetricFile extends File {
     result =
       // avoid 0 values
       1 + count(string s | exists(Operation op | op.getFile() = this and s = op.getOperator())) +
-        count(string s | s = getAUsedHalsteadN1Operator())
+        count(string s | s = this.getAUsedHalsteadN1Operator())
   }
 
   /**
@@ -209,7 +209,7 @@ private predicate aClassFile(Class c, File file) { c.getDefinitionLocation().get
 
 pragma[noopt]
 private predicate dependsOnFileSimple(MetricFile source, MetricFile dest) {
-  // class derives from classs
+  // class derives from another class
   exists(Class fromClass, Class toClass |
     aClassFile(fromClass, source) and
     fromClass.derivesFrom(toClass) and

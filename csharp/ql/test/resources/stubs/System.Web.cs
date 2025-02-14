@@ -27,26 +27,27 @@ namespace System.Web
         public virtual HttpResponseBase Response => null;
     }
 
-    public interface IHtmlString
-    {
-    }
-
     public class HtmlString : IHtmlString
     {
         public HtmlString(string s)
         {
         }
+
+        public string ToHtmlString() => null;
     }
 
     public class HttpServerUtility
     {
         public void Transfer(string path) { }
         public string UrlEncode(string s) => null;
+        public string HtmlEncode(string s) => null;
     }
 
     public class HttpApplication : IHttpHandler
     {
         public HttpServerUtility Server { get; }
+
+        public Routing.RouteTable RouteTable { get; }
     }
 }
 
@@ -78,6 +79,8 @@ namespace System.Web.UI
 
     public class Page
     {
+        public System.Security.Principal.IPrincipal User { get; }
+        public System.Web.HttpRequest Request { get; }
     }
 
     interface IPostBackDataHandler
@@ -152,9 +155,16 @@ namespace System.Web
         public HttpCookieCollection Cookies => null;
     }
 
+    public class HttpRequestWrapper : System.Web.HttpRequestBase
+    {
+        public HttpRequestWrapper(HttpRequest r) { }
+    }
+
     public class HttpResponse
     {
         public void Write(object o) { }
+        public void Write(string s) { }
+        public void WriteFile(string s) { }
         public HttpCookieCollection Cookies => null;
         public void AddHeader(string name, string value) { }
         public void Redirect(string url) { }
@@ -167,14 +177,6 @@ namespace System.Web
         public HttpResponse Response => null;
         public SessionState.HttpSessionState Session => null;
         public HttpServerUtility Server => null;
-    }
-
-    public class HttpUtility
-    {
-        public static string HtmlEncode(object value) => null;
-        public static string HtmlEncode(string value) => null;
-        public static string UrlEncode(string value) => null;
-        public static string HtmlAttributeEncode(string value) => null;
     }
 
     public class HttpCookie
@@ -306,6 +308,20 @@ namespace System.Web.Routing
     public class RequestContext
     {
     }
+
+    public class Route
+    {
+    }
+
+    public class RouteTable
+    {
+        public RouteCollection Routes { get; }
+    }
+
+    public class RouteCollection
+    {
+        public Route MapPageRoute(string routeName, string routeUrl, string physicalFile, bool checkPhysicalUrlAccess) { return null; }
+    }
 }
 
 namespace System.Web.Security
@@ -357,6 +373,15 @@ namespace System.Web.Helpers
     }
 }
 
+namespace System.Web.WebPages
+{
+    public static class RequestExtensions
+    {
+        public static bool IsUrlLocalToHost(this System.Web.HttpRequestBase request, string url) => throw null;
+    }
+
+}
+
 namespace System.Web.Script.Serialization
 {
     // Generated from `System.Web.Script.Serialization.JavaScriptSerializer` in `System.Web.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35`
@@ -365,6 +390,8 @@ namespace System.Web.Script.Serialization
         public JavaScriptSerializer() => throw null;
         public JavaScriptSerializer(System.Web.Script.Serialization.JavaScriptTypeResolver resolver) => throw null;
         public object DeserializeObject(string input) => throw null;
+        public T Deserialize<T> (string input) => throw null;
+        public object Deserialize(string input, Type targetType) => throw null;
     }
 
     // Generated from `System.Web.Script.Serialization.JavaScriptTypeResolver` in `System.Web.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35`

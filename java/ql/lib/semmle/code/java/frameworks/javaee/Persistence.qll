@@ -10,8 +10,8 @@ import java
  */
 class PersistentEntity extends RefType {
   PersistentEntity() {
-    getAnAnnotation() instanceof EntityAnnotation or
-    getAnAnnotation() instanceof EmbeddableAnnotation
+    this.getAnAnnotation() instanceof EntityAnnotation or
+    this.getAnAnnotation() instanceof EmbeddableAnnotation
   }
 
   /**
@@ -22,23 +22,23 @@ class PersistentEntity extends RefType {
    * instead.
    */
   string getAccessType() {
-    if exists(getAccessTypeFromAnnotation())
-    then result = getAccessTypeFromAnnotation()
+    if exists(this.getAccessTypeFromAnnotation())
+    then result = this.getAccessTypeFromAnnotation()
     else
       // If the access type is not explicit, then the location of the `Id` annotation determines
       // which access type is used.
-      if getAMethod().hasAnnotation("javax.persistence", "Id")
+      if this.getAMethod().hasAnnotation("javax.persistence", "Id")
       then result = "property"
       else result = "field"
   }
 
   /**
-   * Gets the access type for this entity as defined by a `@javax.persistence.Access` annotation, if any.
+   * Gets the access type for this entity as defined by a `@javax.persistence.Access` annotation,
+   * if any, in lower case.
    */
   string getAccessTypeFromAnnotation() {
-    exists(AccessAnnotation accessType | accessType = getAnAnnotation() |
-      result =
-        accessType.getValue("value").(FieldRead).getField().(EnumConstant).getName().toLowerCase()
+    exists(AccessAnnotation accessType | accessType = this.getAnAnnotation() |
+      result = accessType.getEnumConstantValue("value").getName().toLowerCase()
     )
   }
 }

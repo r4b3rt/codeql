@@ -9,17 +9,16 @@
  * @precision high
  * @id py/code-injection
  * @tags security
- *       external/owasp/owasp-a1
  *       external/cwe/cwe-094
  *       external/cwe/cwe-095
  *       external/cwe/cwe-116
  */
 
 import python
-import semmle.python.security.dataflow.CodeInjection
-import DataFlow::PathGraph
+import semmle.python.security.dataflow.CodeInjectionQuery
+import CodeInjectionFlow::PathGraph
 
-from CodeInjection::Configuration config, DataFlow::PathNode source, DataFlow::PathNode sink
-where config.hasFlowPath(source, sink)
-select sink.getNode(), source, sink, "$@ flows to here and is interpreted as code.",
-  source.getNode(), "A user-provided value"
+from CodeInjectionFlow::PathNode source, CodeInjectionFlow::PathNode sink
+where CodeInjectionFlow::flowPath(source, sink)
+select sink.getNode(), source, sink, "This code execution depends on a $@.", source.getNode(),
+  "user-provided value"

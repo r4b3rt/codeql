@@ -3,10 +3,12 @@
  */
 
 import javascript
+private import semmle.javascript.internal.CachedStages
 
 /**
  * An expression that evaluates to a constant primitive value.
  */
+cached
 abstract class ConstantExpr extends Expr { }
 
 /**
@@ -16,6 +18,7 @@ module SyntacticConstants {
   /**
    * An expression that evaluates to a constant value according to a bottom-up syntactic analysis.
    */
+  cached
   abstract class SyntacticConstant extends ConstantExpr { }
 
   /**
@@ -23,8 +26,11 @@ module SyntacticConstants {
    *
    * Note that `undefined`, `NaN` and `Infinity` are global variables, and are not covered by this class.
    */
+  cached
   class PrimitiveLiteralConstant extends SyntacticConstant {
+    cached
     PrimitiveLiteralConstant() {
+      Stages::Ast::ref() and
       this instanceof NumberLiteral
       or
       this instanceof StringLiteral
@@ -43,40 +49,52 @@ module SyntacticConstants {
   /**
    * A literal null expression.
    */
-  class NullConstant extends SyntacticConstant, NullLiteral { }
+  cached
+  class NullConstant extends SyntacticConstant, NullLiteral {
+    cached
+    NullConstant() { Stages::Ast::ref() and this = this }
+  }
 
   /**
    * A unary operation on a syntactic constant.
    */
+  cached
   class UnaryConstant extends SyntacticConstant, UnaryExpr {
-    UnaryConstant() { getOperand() instanceof SyntacticConstant }
+    cached
+    UnaryConstant() { this.getOperand() instanceof SyntacticConstant }
   }
 
   /**
    * A binary operation on syntactic constants.
    */
+  cached
   class BinaryConstant extends SyntacticConstant, BinaryExpr {
+    cached
     BinaryConstant() {
-      getLeftOperand() instanceof SyntacticConstant and
-      getRightOperand() instanceof SyntacticConstant
+      this.getLeftOperand() instanceof SyntacticConstant and
+      this.getRightOperand() instanceof SyntacticConstant
     }
   }
 
   /**
    * A conditional expression on syntactic constants.
    */
+  cached
   class ConditionalConstant extends SyntacticConstant, ConditionalExpr {
+    cached
     ConditionalConstant() {
-      getCondition() instanceof SyntacticConstant and
-      getConsequent() instanceof SyntacticConstant and
-      getAlternate() instanceof SyntacticConstant
+      this.getCondition() instanceof SyntacticConstant and
+      this.getConsequent() instanceof SyntacticConstant and
+      this.getAlternate() instanceof SyntacticConstant
     }
   }
 
   /**
    * A use of the global variable `undefined` or `void e`.
    */
+  cached
   class UndefinedConstant extends SyntacticConstant {
+    cached
     UndefinedConstant() {
       this.(GlobalVarAccess).getName() = "undefined" or
       this instanceof VoidExpr
@@ -86,22 +104,28 @@ module SyntacticConstants {
   /**
    * A use of the global variable `NaN`.
    */
+  cached
   class NaNConstant extends SyntacticConstant {
+    cached
     NaNConstant() { this.(GlobalVarAccess).getName() = "NaN" }
   }
 
   /**
    * A use of the global variable `Infinity`.
    */
+  cached
   class InfinityConstant extends SyntacticConstant {
+    cached
     InfinityConstant() { this.(GlobalVarAccess).getName() = "Infinity" }
   }
 
   /**
    * An expression that wraps the syntactic constant it evaluates to.
    */
+  cached
   class WrappedConstant extends SyntacticConstant {
-    WrappedConstant() { getUnderlyingValue() instanceof SyntacticConstant }
+    cached
+    WrappedConstant() { this.getUnderlyingValue() instanceof SyntacticConstant }
   }
 
   /**
@@ -123,6 +147,8 @@ module SyntacticConstants {
 /**
  * An expression that evaluates to a constant string.
  */
+cached
 class ConstantString extends ConstantExpr {
-  ConstantString() { exists(getStringValue()) }
+  cached
+  ConstantString() { exists(this.getStringValue()) }
 }

@@ -26,12 +26,12 @@ class Expr extends StmtParent, @expr {
   Function getEnclosingFunction() { result = exprEnclosingElement(this) }
 
   /** Gets the nearest enclosing set of curly braces around this expression in the source, if any. */
-  BlockStmt getEnclosingBlock() { result = getEnclosingStmt().getEnclosingBlock() }
+  BlockStmt getEnclosingBlock() { result = this.getEnclosingStmt().getEnclosingBlock() }
 
   override Stmt getEnclosingStmt() {
     result = this.getParent().(Expr).getEnclosingStmt()
     or
-    result = this.getParent().(Stmt)
+    result = this.getParent()
     or
     exists(Expr other | result = other.getEnclosingStmt() and other.getConversion() = this)
     or
@@ -49,11 +49,33 @@ class Expr extends StmtParent, @expr {
   /** Gets the enclosing variable of this expression, if any. */
   Variable getEnclosingVariable() { result = exprEnclosingElement(this) }
 
+  /** Gets the enclosing variable or function of this expression. */
+  Declaration getEnclosingDeclaration() { result = exprEnclosingElement(this) }
+
   /** Gets a child of this expression. */
-  Expr getAChild() { exists(int n | result = this.getChild(n)) }
+  Expr getAChild() { result = this.getChild(_) }
 
   /** Gets the parent of this expression, if any. */
   Element getParent() { exprparents(underlyingElement(this), _, unresolveElement(result)) }
+
+  /**
+   * Gets the `n`th compiler-generated destructor call that is performed after this expression, in
+   * order of destruction.
+   */
+  DestructorCall getImplicitDestructorCall(int n) {
+    exists(Expr e |
+      e = this.(TemporaryObjectExpr).getExpr() and
+      synthetic_destructor_call(e, max(int i | synthetic_destructor_call(e, i, _)) - n, result)
+    )
+    or
+    not this = any(TemporaryObjectExpr temp).getExpr() and
+    synthetic_destructor_call(this, max(int i | synthetic_destructor_call(this, i, _)) - n, result)
+  }
+
+  /**
+   * Gets a compiler-generated destructor call that is performed after this expression.
+   */
+  DestructorCall getAnImplicitDestructorCall() { synthetic_destructor_call(this, _, result) }
 
   /** Gets the location of this expression. */
   override Location getLocation() {
@@ -114,13 +136,6 @@ class Expr extends StmtParent, @expr {
    */
   Type getUnspecifiedType() { result = this.getType().getUnspecifiedType() }
 
-  /**
-   * Gets an integer indicating the type of expression that this represents.
-   *
-   * DEPRECATED: use the subclasses of `Expr` rather than relying on this predicate.
-   */
-  deprecated int getKind() { exprs(underlyingElement(this), result, _) }
-
   /** Gets a textual representation of this expression. */
   override string toString() { none() }
 
@@ -156,7 +171,19 @@ class Expr extends StmtParent, @expr {
     else result = this.getValue()
   }
 
-  /** Holds if this expression has a value that can be determined at compile time. */
+  /**
+   * Holds if this expression has a value that can be determined at compile time.
+   *
+   * An expression has a value that can be determined at compile time when:
+   * - it is a compile-time constant, e.g., a literal value or the result of a constexpr
+   *   compile-time constant;
+   * - it is an address of a (member) function, an address of a constexpr variable
+   *   initialized to a constant address, or an address of an lvalue, or any of the
+   *   previous with a constant value added to or subtracted from the address;
+   * - it is a reference to a (member) function, a reference to a constexpr variable
+   *   initialized to a constant address, or a reference to an lvalue;
+   * - it is a non-template parameter of a uninstantiated template.
+   */
   cached
   predicate isConstant() {
     valuebind(_, underlyingElement(this))
@@ -219,13 +246,13 @@ class Expr extends StmtParent, @expr {
    * Holds if this expression is a _glvalue_. A _glvalue_ is either an _lvalue_ or an
    * _xvalue_.
    */
-  predicate isGLValueCategory() { isLValueCategory() or isXValueCategory() }
+  predicate isGLValueCategory() { this.isLValueCategory() or this.isXValueCategory() }
 
   /**
    * Holds if this expression is an _rvalue_. An _rvalue_ is either a _prvalue_ or an
    * _xvalue_.
    */
-  predicate isRValueCategory() { isPRValueCategory() or isXValueCategory() }
+  predicate isRValueCategory() { this.isPRValueCategory() or this.isXValueCategory() }
 
   /**
    * Gets a string representation of the value category of the expression.
@@ -240,15 +267,15 @@ class Expr extends StmtParent, @expr {
    * `hasLValueToRvalueConversion()` holds.
    */
   string getValueCategoryString() {
-    isLValueCategory() and
+    this.isLValueCategory() and
     result = "lvalue"
     or
-    isXValueCategory() and
+    this.isXValueCategory() and
     result = "xvalue"
     or
     (
-      isPRValueCategory() and
-      if hasLValueToRValueConversion() then result = "prvalue(load)" else result = "prvalue"
+      this.isPRValueCategory() and
+      if this.hasLValueToRValueConversion() then result = "prvalue(load)" else result = "prvalue"
     )
   }
 
@@ -263,7 +290,7 @@ class Expr extends StmtParent, @expr {
    * such as an expression inside a sizeof.
    */
   predicate isUnevaluated() {
-    exists(Element e | e = getParentWithConversions+() |
+    exists(Element e | e = this.getParentWithConversions+() |
       e instanceof SizeofOperator
       or
       exists(Expr e2 |
@@ -277,9 +304,15 @@ class Expr extends StmtParent, @expr {
       e instanceof NoExceptExpr
       or
       e instanceof AlignofOperator
+      or
+      e instanceof DatasizeofOperator
     )
     or
-    exists(Decltype d | d.getExpr() = getParentWithConversions*())
+    exists(Decltype d | d.getExpr() = this.getParentWithConversions*())
+    or
+    exists(ConstexprIfStmt constIf |
+      constIf.getControllingExpr() = this.getParentWithConversions*()
+    )
   }
 
   /**
@@ -455,7 +488,7 @@ class Expr extends StmtParent, @expr {
     // For performance, we avoid a full transitive closure over `getConversion`.
     // Since there can be several implicit conversions before and after an
     // explicit conversion, use `getImplicitlyConverted` to step over them
-    // cheaply. Then, if there is an explicit conversion following the implict
+    // cheaply. Then, if there is an explicit conversion following the implicit
     // conversion sequence, recurse to handle multiple explicit conversions.
     if this.getImplicitlyConverted().hasExplicitConversion()
     then result = this.getImplicitlyConverted().getConversion().getExplicitlyConverted()
@@ -600,9 +633,112 @@ class ParenthesisExpr extends Conversion, @parexpr {
 }
 
 /**
- * A C/C++ expression that has not been resolved.
+ * A node representing a C11 `_Generic` selection expression.
  *
- * It is assigned `ErroneousType` as its type.
+ * For example:
+ * ```
+ * _Generic(e, int: "int", default: "unknown")
+ * ```
+ */
+class C11GenericExpr extends Conversion, @c11_generic {
+  int associationCount;
+
+  C11GenericExpr() { associationCount = (count(this.getAChild()) - 1) / 2 }
+
+  override string toString() { result = "_Generic" }
+
+  override string getAPrimaryQlClass() { result = "C11GenericExpr" }
+
+  /**
+   * Gets the controlling expression of the generic selection.
+   *
+   * For example, for
+   * ```
+   * _Generic(e, int: "a", default: "b")
+   * ```
+   * the result is `e`.
+   */
+  Expr getControllingExpr() { result = this.getChild(0) }
+
+  /**
+   * Gets the type of the `n`th element in the association list of the generic selection.
+   *
+   * For example, for
+   * ```
+   * _Generic(e, int: "a", default: "b")
+   * ```
+   * the type of the 0th element is `int`. In the case of the default element the
+   * type will an instance of `VoidType`.
+   */
+  Type getAssociationType(int n) {
+    n in [0 .. associationCount - 1] and
+    result = this.getChild(n * 2 + 1).(TypeName).getType()
+  }
+
+  /**
+   * Gets the type of an element in the association list of the generic selection.
+   */
+  Type getAnAssociationType() { result = this.getAssociationType(_) }
+
+  /**
+   * Gets the expression of the `n`th element in the association list of
+   * the generic selection.
+   *
+   * For example, for
+   * ```
+   * _Generic(e, int: "a", default: "b")
+   * ```
+   * the expression for 0th element is `"a"`, and the expression for the
+   * 1st element is `"b"`. For the selected expression, this predicate
+   * will yield a `ReuseExpr`, such that
+   * ```
+   * this.getAssociationExpr(n).(ReuseExpr).getReusedExpr() = this.getExpr()
+   * ```
+   */
+  Expr getAssociationExpr(int n) {
+    n in [0 .. associationCount - 1] and
+    result = this.getChild(n * 2 + 2)
+  }
+
+  /**
+   * Gets the expression of an element in the association list of the generic selection.
+   */
+  Expr getAnAssociationExpr() { result = this.getAssociationExpr(_) }
+
+  /**
+   * Holds if the `n`th element of the association list of the generic selection is the
+   * default element.
+   *
+   * For example, for
+   * ```
+   * _Generic(e, int: "a", default: "b")
+   * ```
+   * this holds for 1.
+   */
+  predicate isDefaultAssociation(int n) { this.getAssociationType(n) instanceof VoidType }
+
+  /**
+   * Holds if the `n`th element of the association list of the generic selection is the
+   * one whose expression was selected.
+   *
+   * For example, with `e` of type `int` and
+   * ```
+   * _Generic(e, int: "a", default: "b")
+   * ```
+   * this holds for 0.
+   */
+  predicate isSelectedAssociation(int n) {
+    this.getAssociationExpr(n).(ReuseExpr).getReusedExpr() = this.getExpr()
+  }
+}
+
+/**
+ * A C/C++ expression that could not be resolved, or that can no longer be
+ * represented due to a database upgrade or downgrade.
+ *
+ * If the expression could not be resolved, it has type `ErroneousType`. In the
+ * case of a database upgrade or downgrade, the original type from before the
+ * upgrade or downgrade is kept if that type can be represented.
  */
 class ErrorExpr extends Expr, @errorexpr {
   override string toString() { result = "<error expr>" }
@@ -632,6 +768,8 @@ class AssumeExpr extends Expr, @assume {
 
 /**
  * A C/C++ comma expression.
+ *
+ * For example:
  * ```
  * int c = compute1(), compute2(), resulting_value;
  * ```
@@ -720,13 +858,6 @@ class ReferenceToExpr extends Conversion, @reference_to {
 class PointerDereferenceExpr extends UnaryOperation, @indirect {
   override string getAPrimaryQlClass() { result = "PointerDereferenceExpr" }
 
-  /**
-   * DEPRECATED: Use getOperand() instead.
-   *
-   * Gets the expression that is being dereferenced.
-   */
-  deprecated Expr getExpr() { result = getOperand() }
-
   override string getOperator() { result = "*" }
 
   override int getPrecedence() { result = 16 }
@@ -780,15 +911,15 @@ class NewOrNewArrayExpr extends Expr, @any_new_expr {
    * Gets the alignment argument passed to the allocation function, if any.
    */
   Expr getAlignmentArgument() {
-    hasAlignedAllocation() and
+    this.hasAlignedAllocation() and
     (
       // If we have an allocator call, the alignment is the second argument to
       // that call.
-      result = getAllocatorCall().getArgument(1)
+      result = this.getAllocatorCall().getArgument(1)
       or
       // Otherwise, the alignment winds up as child number 3 of the `new`
       // itself.
-      result = getChild(3)
+      result = this.getChild(3)
     )
   }
 
@@ -829,6 +960,16 @@ class NewOrNewArrayExpr extends Expr, @any_new_expr {
     exists(int form |
       expr_deallocator(underlyingElement(this), _, form) and
       form.bitAnd(2) != 0 // Bit one is the "alignment" bit
+    )
+  }
+
+  /**
+   * Holds if the deallocation function is a destroying delete.
+   */
+  predicate isDestroyingDeleteDeallocation() {
+    exists(int form |
+      expr_deallocator(underlyingElement(this), _, form) and
+      form.bitAnd(4) != 0 // Bit two is the "destroying delete" bit
     )
   }
 
@@ -916,7 +1057,7 @@ class NewArrayExpr extends NewOrNewArrayExpr, @new_array_expr {
    * Gets the element type of the array being allocated.
    */
   Type getAllocatedElementType() {
-    result = getType().getUnderlyingType().(PointerType).getBaseType()
+    result = this.getType().getUnderlyingType().(PointerType).getBaseType()
   }
 
   /**
@@ -926,42 +1067,42 @@ class NewArrayExpr extends NewOrNewArrayExpr, @new_array_expr {
    * gives nothing, as the 10 is considered part of the type.
    */
   Expr getExtent() { result = this.getChild(2) }
+
+  /**
+   * Gets the number of elements in the array, if available.
+   *
+   * For example, `new int[]{1,2,3}` has an array size of 3.
+   */
+  int getArraySize() {
+    result = this.getAllocatedType().(ArrayType).getArraySize() or
+    result = this.getInitializer().(ArrayAggregateLiteral).getArraySize()
+  }
 }
 
+private class TDeleteOrDeleteArrayExpr = @delete_expr or @delete_array_expr;
+
 /**
- * A C++ `delete` (non-array) expression.
- * ```
- * delete ptr;
- * ```
+ * A C++ `delete` or `delete[]` expression.
  */
-class DeleteExpr extends Expr, @delete_expr {
-  override string toString() { result = "delete" }
-
-  override string getAPrimaryQlClass() { result = "DeleteExpr" }
-
+class DeleteOrDeleteArrayExpr extends Expr, TDeleteOrDeleteArrayExpr {
   override int getPrecedence() { result = 16 }
 
   /**
-   * Gets the compile-time type of the object being deleted.
-   */
-  Type getDeletedObjectType() {
-    result =
-      getExpr().getFullyConverted().getType().stripTopLevelSpecifiers().(PointerType).getBaseType()
-  }
-
-  /**
    * Gets the call to a destructor that occurs prior to the object's memory being deallocated, if any.
+   *
+   * In the case of `delete[]` at runtime, the destructor will be called once for each element in the array, but the
+   * destructor call only exists once in the AST.
    */
   DestructorCall getDestructorCall() { result = this.getChild(1) }
 
   /**
-   * Gets the destructor to be called to destroy the object, if any.
+   * Gets the destructor to be called to destroy the object or array, if any.
    */
-  Destructor getDestructor() { result = getDestructorCall().getTarget() }
+  Destructor getDestructor() { result = this.getDestructorCall().getTarget() }
 
   /**
-   * Gets the `operator delete` that deallocates storage. Does not hold
-   * if the type being destroyed has a virtual destructor. In that case, the
+   * Gets the `operator delete` or `operator delete[]` that deallocates storage.
+   * Does not hold if the type being destroyed has a virtual destructor. In that case, the
    * `operator delete` that will be called is determined at runtime based on the
    * dynamic type of the object.
    */
@@ -970,6 +1111,14 @@ class DeleteExpr extends Expr, @delete_expr {
   }
 
   /**
+   * Gets the call to a non-default `operator delete`/`delete[]` that deallocates storage, if any.
+   *
+   * This will only be present when the type being deleted has a custom `operator delete` and
+   * does not have a virtual destructor.
+   */
+  FunctionCall getDeallocatorCall() { result = this.getChild(0) }
+
+  /**
    * Holds if the deallocation function expects a size argument.
    */
   predicate hasSizedDeallocation() {
@@ -990,16 +1139,73 @@ class DeleteExpr extends Expr, @delete_expr {
   }
 
   /**
-   * Gets the call to a non-default `operator delete` that deallocates storage, if any.
-   *
-   * This will only be present when the type being deleted has a custom `operator delete`.
+   * Holds if the deallocation function is a destroying delete.
    */
-  FunctionCall getAllocatorCall() { result = this.getChild(0) }
+  predicate isDestroyingDeleteDeallocation() {
+    exists(int form |
+      expr_deallocator(underlyingElement(this), _, form) and
+      form.bitAnd(4) != 0 // Bit two is the "destroying delete" bit
+    )
+  }
 
   /**
-   * Gets the object being deleted.
+   * Gets the object or array being deleted.
    */
-  Expr getExpr() { result = this.getChild(3) or result = this.getChild(1).getChild(-1) }
+  Expr getExpr() {
+    // If there is a destructor call, the object being deleted is the qualifier
+    // otherwise it is the third child.
+    exists(Expr exprWithReuse | exprWithReuse = this.getExprWithReuse() |
+      if not exprWithReuse instanceof ReuseExpr
+      then result = exprWithReuse
+      else result = this.getDestructorCall().getQualifier()
+    )
+  }
+
+  /**
+   * Gets the object or array being deleted, and gets a `ReuseExpr` when there
+   * is a destructor call and the object is also the qualifier of the call.
+   *
+   * For example, given:
+   * ```
+   * struct HasDestructor { ~HasDestructor(); };
+   * struct PlainOldData { int x, char y; };
+   *
+   * void f(HasDestructor* hasDestructor, PlainOldData* pod) {
+   *   delete hasDestructor;
+   *   delete pod;
+   * }
+   * ```
+   * This predicate yields a `ReuseExpr` for `delete hasDestructor`, as the
+   * the deleted expression has a destructor, and that expression is also
+   * the qualifier of the destructor call. In the case of `delete pod` the
+   * predicate does not yield a `ReuseExpr`, as there is no destructor call.
+   */
+  Expr getExprWithReuse() { result = this.getChild(3) }
+}
+
+/**
+ * A C++ `delete` (non-array) expression.
+ * ```
+ * delete ptr;
+ * ```
+ */
+class DeleteExpr extends DeleteOrDeleteArrayExpr, @delete_expr {
+  override string toString() { result = "delete" }
+
+  override string getAPrimaryQlClass() { result = "DeleteExpr" }
+
+  /**
+   * Gets the compile-time type of the object being deleted.
+   */
+  Type getDeletedObjectType() {
+    result =
+      this.getExpr()
+          .getFullyConverted()
+          .getType()
+          .stripTopLevelSpecifiers()
+          .(PointerType)
+          .getBaseType()
+  }
 }
 
 /**
@@ -1008,72 +1214,23 @@ class DeleteExpr extends Expr, @delete_expr {
  * delete[] arr;
  * ```
  */
-class DeleteArrayExpr extends Expr, @delete_array_expr {
+class DeleteArrayExpr extends DeleteOrDeleteArrayExpr, @delete_array_expr {
   override string toString() { result = "delete[]" }
 
   override string getAPrimaryQlClass() { result = "DeleteArrayExpr" }
-
-  override int getPrecedence() { result = 16 }
 
   /**
    * Gets the element type of the array being deleted.
    */
   Type getDeletedElementType() {
     result =
-      getExpr().getFullyConverted().getType().stripTopLevelSpecifiers().(PointerType).getBaseType()
+      this.getExpr()
+          .getFullyConverted()
+          .getType()
+          .stripTopLevelSpecifiers()
+          .(PointerType)
+          .getBaseType()
   }
-
-  /**
-   * Gets the call to a destructor that occurs prior to the array's memory being deallocated, if any.
-   *
-   * At runtime, the destructor will be called once for each element in the array, but the
-   * destructor call only exists once in the AST.
-   */
-  DestructorCall getDestructorCall() { result = this.getChild(1) }
-
-  /**
-   * Gets the destructor to be called to destroy each element in the array, if any.
-   */
-  Destructor getDestructor() { result = getDestructorCall().getTarget() }
-
-  /**
-   * Gets the `operator delete[]` that deallocates storage.
-   */
-  Function getDeallocator() {
-    expr_deallocator(underlyingElement(this), unresolveElement(result), _)
-  }
-
-  /**
-   * Holds if the deallocation function expects a size argument.
-   */
-  predicate hasSizedDeallocation() {
-    exists(int form |
-      expr_deallocator(underlyingElement(this), _, form) and
-      form.bitAnd(1) != 0 // Bit zero is the "size" bit
-    )
-  }
-
-  /**
-   * Holds if the deallocation function expects an alignment argument.
-   */
-  predicate hasAlignedDeallocation() {
-    exists(int form |
-      expr_deallocator(underlyingElement(this), _, form) and
-      form.bitAnd(2) != 0 // Bit one is the "alignment" bit
-    )
-  }
-
-  /**
-   * Gets the call to a non-default `operator delete` that deallocates storage, if any.
-   *
-   * This will only be present when the type being deleted has a custom `operator delete`.
-   */
-  FunctionCall getAllocatorCall() { result = this.getChild(0) }
-
-  /**
-   * Gets the array being deleted.
-   */
-  Expr getExpr() { result = this.getChild(3) or result = this.getChild(1).getChild(-1) }
 }
 
 /**
@@ -1101,7 +1258,7 @@ class StmtExpr extends Expr, @expr_stmt {
    * x = ({ dosomething(); a+b; });
    * ```
    */
-  Expr getResultExpr() { result = getStmtResultExpr(getStmt()) }
+  Expr getResultExpr() { result = getStmtResultExpr(this.getStmt()) }
 }
 
 /** Get the result expression of a statement. (Helper function for StmtExpr.) */
@@ -1230,20 +1387,20 @@ class FoldExpr extends Expr, @foldexpr {
   predicate isRightFold() { fold(underlyingElement(this), _, false) }
 
   /** Holds if this is a unary fold expression. */
-  predicate isUnaryFold() { getNumChild() = 1 }
+  predicate isUnaryFold() { this.getNumChild() = 1 }
 
   /** Holds if this is a binary fold expression. */
-  predicate isBinaryFold() { getNumChild() = 2 }
+  predicate isBinaryFold() { this.getNumChild() = 2 }
 
   /**
    * Gets the child expression containing the unexpanded parameter pack.
    */
   Expr getPackExpr() {
     this.isUnaryFold() and
-    result = getChild(0)
+    result = this.getChild(0)
     or
     this.isBinaryFold() and
-    if this.isRightFold() then result = getChild(0) else result = getChild(1)
+    if this.isRightFold() then result = this.getChild(0) else result = this.getChild(1)
   }
 
   /**
@@ -1251,7 +1408,7 @@ class FoldExpr extends Expr, @foldexpr {
    */
   Expr getInitExpr() {
     this.isBinaryFold() and
-    if this.isRightFold() then result = getChild(1) else result = getChild(0)
+    if this.isRightFold() then result = this.getChild(1) else result = this.getChild(0)
   }
 }
 
@@ -1314,6 +1471,24 @@ class CoAwaitExpr extends UnaryOperation, @co_await {
   override string getOperator() { result = "co_await" }
 
   override int getPrecedence() { result = 16 }
+
+  /**
+   * Gets the Boolean expression that is used to decide if the enclosing
+   * coroutine should be suspended.
+   */
+  Expr getAwaitReady() { result = this.getChild(1) }
+
+  /**
+   * Gets the expression that represents the resume point if the enclosing
+   * coroutine was suspended.
+   */
+  Expr getAwaitResume() { result = this.getChild(2) }
+
+  /**
+   * Gets the expression that is evaluated when the enclosing coroutine is
+   * suspended.
+   */
+  Expr getAwaitSuspend() { result = this.getChild(3) }
 }
 
 /**
@@ -1328,4 +1503,50 @@ class CoYieldExpr extends UnaryOperation, @co_yield {
   override string getOperator() { result = "co_yield" }
 
   override int getPrecedence() { result = 2 }
+
+  /**
+   * Gets the Boolean expression that is used to decide if the enclosing
+   * coroutine should be suspended.
+   */
+  Expr getAwaitReady() { result = this.getChild(1) }
+
+  /**
+   * Gets the expression that represents the resume point if the enclosing
+   * coroutine was suspended.
+   */
+  Expr getAwaitResume() { result = this.getChild(2) }
+
+  /**
+   * Gets the expression that is evaluated when the enclosing coroutine is
+   * suspended.
+   */
+  Expr getAwaitSuspend() { result = this.getChild(3) }
+}
+
+/**
+ * An expression representing the re-use of another expression.
+ *
+ * In some specific cases an expression may be referred to outside its
+ * original context. A re-use expression wraps any such reference. A
+ * re-use expression can for example occur as the qualifier of an implicit
+ * destructor called on a temporary object, where the original use of the
+ * expression is in the definition of the temporary.
+ */
+class ReuseExpr extends Expr, @reuseexpr {
+  override string getAPrimaryQlClass() { result = "ReuseExpr" }
+
+  override string toString() { result = "reuse of " + this.getReusedExpr().toString() }
+
+  /**
+   * Gets the expression that is being re-used.
+   */
+  Expr getReusedExpr() { expr_reuse(underlyingElement(this), unresolveElement(result), _) }
+
+  override Type getType() { result = this.getReusedExpr().getType() }
+
+  override predicate isLValueCategory() { expr_reuse(underlyingElement(this), _, 3) }
+
+  override predicate isXValueCategory() { expr_reuse(underlyingElement(this), _, 2) }
+
+  override predicate isPRValueCategory() { expr_reuse(underlyingElement(this), _, 1) }
 }
